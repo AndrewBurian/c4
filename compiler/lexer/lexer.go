@@ -31,6 +31,7 @@ type Lexer struct {
 	tokens        []*Token
 	previousToken *Token
 	tokenCursor   int
+	peekToken     *Token
 }
 
 func NewLexer(input []byte) *Lexer {
@@ -72,6 +73,11 @@ func (l *Lexer) NextToken() *Token {
 	if l.tokenCursor < len(l.tokens) {
 		l.lastReadToken = l.tokens[l.tokenCursor]
 	}
+
+	if l.tokenCursor+1 < len(l.tokens) {
+		l.peekToken = l.tokens[l.tokenCursor+1]
+	}
+
 	return l.lastReadToken
 }
 
@@ -102,7 +108,7 @@ func (l *Lexer) next() rune {
 	if l.currentRune == '\n' {
 		l.endPosition.Line++
 		l.previousLineCols = l.endPosition.Column
-		l.endPosition.Column = 0
+		l.endPosition.Column = 1
 	}
 
 	l.previousRune = l.currentRune
@@ -126,13 +132,13 @@ func (l *Lexer) backupOne() {
 
 	l.endPosition.ByteOffset = l.endPosition.ByteOffset - l.currentRuneSize
 	l.endPosition.Column--
+	l.currentRune = l.previousRune
 	if l.currentRune == '\n' {
 		l.endPosition.Line--
 		l.endPosition.Column = l.previousLineCols
 
 	}
 
-	l.currentRune = l.previousRune
 	l.previousRune = 0
 	l.canBackup = false
 	l.atEOF = false
@@ -205,7 +211,32 @@ func (l *Lexer) discardToCurrent() {
 	}
 
 	l.startPosition.SetTo(l.endPosition)
-	// l.next()
-	// l.endPosition.Offset(1, l.currentRuneSize)
-	// l.backupOne()
+
+	/*
+				If this is the end of the line, things get weird
+
+				The end position cursor is the end point of a half-open range, it
+				falls one character AFTER the token. So it includes a \n character without
+				actually advancing to the next line since the \n is on the same line
+
+				'foooooobar'\n
+		        ^start        ^end
+
+				When we advance the start cursor to it, it puts it at this position floating off
+				the end of the line
+
+				'foooooobar'\n
+		                      ^end
+							  ^start
+
+				This isn't what we want, since the start cursor should always point to the
+				first valid character. It is pointing to the correct byte, it's only broken in the
+				conceptual line/column model. So we advance it here if needed to the next line.
+				This means it's "leading" the end cursor by lines, but the end cursor will catch up on the next read
+
+	*/
+	if l.currentRune == '\n' {
+		l.startPosition.Line++
+		l.startPosition.Column = 0
+	}
 }

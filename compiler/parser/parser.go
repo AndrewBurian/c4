@@ -5,8 +5,8 @@ import (
 	"path"
 	"strings"
 
-	"go.burian.dev/c4arch/internal/lexer"
-	"go.burian.dev/c4arch/internal/loader"
+	"go.burian.dev/c4/compiler/lexer"
+	"go.burian.dev/c4/compiler/loader"
 )
 
 type Parser struct {
@@ -17,7 +17,7 @@ type Parser struct {
 
 	currentScope    []string
 	currentGroup    string
-	heldId          IdentifierString
+	heldIds         []IdentifierString
 	currentFile     string
 	currentUniqueId int
 
@@ -30,6 +30,7 @@ type Parser struct {
 func NewParser(l *loader.Loader) *Parser {
 	p := new(Parser)
 	p.load = l
+	p.currentUniqueId = 1
 
 	return p
 }
@@ -65,11 +66,6 @@ func (p *Parser) Run() error {
 			}
 			p.workspaces[w.Id()] = w
 		}
-	}
-
-	err := p.Reconcile()
-	if err != nil {
-		return err
 	}
 
 	return nil
@@ -112,26 +108,23 @@ func (p *Parser) acceptOne(t lexer.TokenType) bool {
 }
 
 func (p *Parser) holdIdentifierForAssignment(id IdentifierString) {
-	if p.heldId != "" {
-		panic("already holding identifier " + p.heldId + " can't hold " + id)
-	}
-
-	p.heldId = id
+	p.heldIds = append(p.heldIds, id)
 }
 
 func (p *Parser) claimHeldIdentifier() IdentifierString {
-	if p.heldId == "" {
+	if len(p.heldIds) == 0 {
 		panic("attempt to claim null identifier")
 	}
-	id := p.heldId
-	p.heldId = ""
+	id := p.heldIds[len(p.heldIds)-1]
+	p.heldIds = p.heldIds[:len(p.heldIds)]
 	return id
 }
 
 func (p *Parser) assignIdentifier(e Entity) {
-	if p.heldId != "" {
-		e.SetId(p.heldId)
-		p.heldId = ""
+	if len(p.heldIds) > 0 {
+		id := p.heldIds[len(p.heldIds)-1]
+		p.heldIds = p.heldIds[:len(p.heldIds)-1]
+		e.SetId(id)
 		return
 	}
 

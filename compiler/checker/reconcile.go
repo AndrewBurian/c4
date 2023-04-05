@@ -1,6 +1,9 @@
-package parser
+package checker
 
-func (p *Parser) Reconcile() error {
+type Checker struct {
+}
+
+func (p *Checker) CheckWorkspaces([]*Workspace) error {
 	for _, w := range p.workspaces {
 		p.reconcileWorkspace(w)
 	}

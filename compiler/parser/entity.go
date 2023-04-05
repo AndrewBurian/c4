@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"go.burian.dev/c4arch/internal/lexer"
+	"go.burian.dev/c4/compiler/lexer"
 )
 
 type Entity interface {
@@ -15,22 +15,22 @@ type Entity interface {
 }
 
 type baseEntity struct {
-	LocalId          IdentifierString
-	FullyQualifiedId IdentifierString
-
-	Parent Entity
-
-	Name         string
-	Description  string
-	Group        string
-	Properties   map[string]string
-	Perspectives map[string]string
-	Tags         []string
-	Technology   string
-	Url          string
-
-	relationshipEntity
 	childEntities
+	relationshipEntity
+
+	LocalId          IdentifierString `json:"local_id,omitempty"`
+	FullyQualifiedId IdentifierString `json:"fully_qualified_id,omitempty"`
+
+	Parent Entity `json:"parent,omitempty"`
+
+	Name         string            `json:"name,omitempty"`
+	Description  string            `json:"description,omitempty"`
+	Group        string            `json:"group,omitempty"`
+	Properties   map[string]string `json:"properties,omitempty"`
+	Perspectives map[string]string `json:"perspectives,omitempty"`
+	Tags         []string          `json:"tags,omitempty"`
+	Technology   string            `json:"technology,omitempty"`
+	Url          string            `json:"url,omitempty"`
 }
 
 type ParentEntity interface {
@@ -42,7 +42,7 @@ type Relatable interface {
 }
 
 type relationshipEntity struct {
-	Relationships []*Relationship
+	Relationships []*Relationship `json:"relationships,omitempty"`
 }
 
 func (re *relationshipEntity) SetRelationship(r *Relationship) {
@@ -63,7 +63,7 @@ func (b *baseEntity) SetGroup(name string) {
 }
 
 type childEntities struct {
-	NamedEntities map[IdentifierString]Entity
+	NamedEntities map[IdentifierString]Entity `json:"named_entities,omitempty"`
 }
 
 func (ch *childEntities) Add(e Entity) error {
@@ -78,15 +78,16 @@ func (ch *childEntities) Add(e Entity) error {
 }
 
 func (p *Parser) parseShortDeclarationSeq(must int, targets ...any) error {
+
 	finished := 0
 parsing:
-	for ti := range targets {
+	for i := range targets {
 
-		switch target := targets[ti].(type) {
+		switch target := targets[i].(type) {
 
 		case *string:
 			if !p.acceptOne(lexer.TypeString) {
-				return nil
+				break parsing
 			}
 			p.backupToken()
 			str, err := p.parseString()
@@ -99,6 +100,7 @@ parsing:
 			if !p.acceptOne(lexer.TypeString) {
 				break parsing
 			}
+			p.backupToken()
 			tags, err := p.parseTags()
 			if err != nil {
 				return err
@@ -118,7 +120,20 @@ parsing:
 	}
 
 	if finished < must {
-		return fmt.Errorf("did not parse enough arguments in short declaration")
+		parseTargetTypes := make([]lexer.TokenType, len(targets))
+		for i := range targets {
+			switch targets[i].(type) {
+			case *string:
+				parseTargetTypes[i] = lexer.TypeString
+			case *IdentifierString:
+				parseTargetTypes[i] = lexer.TypeIdentifier
+			case *[]string:
+				parseTargetTypes[i] = lexer.TypeString
+			}
+		}
+
+		expectErr := p.errExpectedNext().Tokens(parseTargetTypes[finished : must-finished]...)
+		return fmt.Errorf("did not parse enough arguments in short declaration:\n> %w", expectErr)
 	}
 	return nil
 }
@@ -135,9 +150,9 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 	}
 
 	for {
-		if p.acceptOne(lexer.TypeIdentifier) {
+		if p.acceptIdentifierString() {
 			if err := p.parseEntityNameOrRelationship(e); err != nil {
-				return fmt.Errorf("error parsing entity: %w", err)
+				return fmt.Errorf("error parsing entity:\n> %w", err)
 			}
 			continue
 		}
@@ -145,7 +160,7 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 		if p.acceptOne(lexer.TypeRelationship) {
 			rel, err := p.parseRelationship("this")
 			if err != nil {
-				return fmt.Errorf("error parsing entity: %w", err)
+				return fmt.Errorf("error parsing entity:\n> %w", err)
 			}
 			e.SetRelationship(rel)
 			continue
@@ -153,8 +168,7 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 
 		if p.acceptOne(lexer.TypeKeyword) {
 			if !allowedKeyword(p.currentKeyword(), allowed) {
-				return p.errExpectedNext().Keywords(allowed...).
-					Tokens(lexer.TypeIdentifier)
+				return p.errExpectedCurrent().Tokens(lexer.TypeIdentifier).Keywords(allowed...)
 			}
 
 			switch p.currentKeyword() {
@@ -180,9 +194,12 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 				}
 				newTags, err := p.parseTags()
 				if err != nil {
-					return fmt.Errorf("error parsing entity: %w", err)
+					return fmt.Errorf("error parsing entity:\n> %w", err)
 				}
 				e.Tags = append(e.Tags, newTags...)
+				if !p.acceptOne(lexer.TypeTerminator) {
+					return p.errExpectedNext().Tokens(lexer.TypeTerminator)
+				}
 				continue
 
 			case KeywordProperties:
@@ -191,7 +208,7 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 				}
 				props, err := p.parseProperties()
 				if err != nil {
-					return fmt.Errorf("error parsing entity: %w", err)
+					return fmt.Errorf("error parsing entity:\n> %w", err)
 				}
 				e.Properties = props
 				continue
@@ -202,7 +219,7 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 				}
 				props, err := p.parseProperties()
 				if err != nil {
-					return fmt.Errorf("error parsing entity: %w", err)
+					return fmt.Errorf("error parsing entity:\n> %w", err)
 				}
 				e.Properties = props
 				continue
@@ -210,7 +227,7 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 			case KeywordThis:
 				r, err := p.parseRelationship("this")
 				if err != nil {
-					return fmt.Errorf("error parsing entity: %w", err)
+					return fmt.Errorf("error parsing entity:\n> %w", err)
 				}
 				e.SetRelationship(r)
 				continue
@@ -218,7 +235,7 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 			case KeywordPerson:
 				pers, err := p.parsePerson()
 				if err != nil {
-					return fmt.Errorf("error parsing entity: %w", err)
+					return fmt.Errorf("error parsing entity:\n> %w", err)
 				}
 				p.assignIdentifier(pers)
 				p.assignGroup(pers)
@@ -228,7 +245,7 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 			case KeywordSoftwareSystem:
 				ss, err := p.parseSoftwareSys()
 				if err != nil {
-					return fmt.Errorf("error parsing entity: %w", err)
+					return fmt.Errorf("error parsing entity:\n> %w", err)
 				}
 				p.assignIdentifier(ss)
 				p.assignGroup(ss)
@@ -238,7 +255,7 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 			case KeywordContainer:
 				cont, err := p.parseContainer()
 				if err != nil {
-					return fmt.Errorf("error parsing entity: %w", err)
+					return fmt.Errorf("error parsing entity:\n> %w", err)
 				}
 				p.assignIdentifier(cont)
 				p.assignGroup(cont)
@@ -248,7 +265,7 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 			case KeywordComponent:
 				comp, err := p.parseComponent()
 				if err != nil {
-					return fmt.Errorf("error parsing entity: %w", err)
+					return fmt.Errorf("error parsing entity:\n> %w", err)
 				}
 				p.assignIdentifier(comp)
 				p.assignGroup(comp)
@@ -291,7 +308,7 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 		}
 
 		// not a token we know how to deal with
-		// also return to caller\
+		// also return to caller
 		return nil
 
 	}
@@ -306,7 +323,7 @@ func (p *Parser) parseSimpleValue(name string, str *string) error {
 	}
 	val, err := p.parseString()
 	if err != nil {
-		return fmt.Errorf("error parsing %s in block: %w", name, err)
+		return fmt.Errorf("error parsing %s in block:\n> %w", name, err)
 	}
 	*str = val
 	if !p.acceptOne(lexer.TypeTerminator) {
@@ -317,30 +334,34 @@ func (p *Parser) parseSimpleValue(name string, str *string) error {
 
 func (p *Parser) parseProperties() (map[string]string, error) {
 	props := make(map[string]string)
-	for p.acceptOne(lexer.TypeString) {
+
+	if !p.acceptOne(lexer.TypeStartBlock) {
+		return nil, p.errExpectedNext().Tokens(lexer.TypeStartBlock)
+	}
+
+	for {
 		if p.acceptOne(lexer.TypeEndBlock) {
-			break
+			return props, nil
 		}
 
 		key, err := p.parseString()
 		if err != nil {
-			return nil, fmt.Errorf("error parsing key for key-value pairs: %w", err)
+			return nil, fmt.Errorf("error parsing property key:\n> %w", err)
 		}
 
-		if !p.acceptOne(lexer.TypeString) {
-			return nil, p.errExpectedNext().Tokens(lexer.TypeString)
+		if _, exists := props[key]; exists {
+			return nil, fmt.Errorf("error parsing property: illegal attempt to redefine key %s", key)
 		}
-		props[key], err = p.parseOneOrMoreLineString()
+
+		props[key], err = p.parseString()
 		if err != nil {
-			return nil, fmt.Errorf("error parsing property value: %w", err)
+			return nil, fmt.Errorf("error parsing propery value for key %s:\n> %w", key, err)
 		}
 
 		if !p.acceptOne(lexer.TypeTerminator) {
-			return nil, p.errExpectedNext().Tokens(lexer.TypeTerminator)
+			return nil, fmt.Errorf("error parsing property definition block:\n> %w", err)
 		}
 	}
-
-	return props, nil
 }
 
 func (p *Parser) parseTags() ([]string, error) {
@@ -360,11 +381,9 @@ func (p *Parser) parseTags() ([]string, error) {
 				dirtyTags[i] = p.cleanString(dirtyTags[i])
 			}
 			tags = append(tags, dirtyTags...)
+		} else {
+			tags = append(tags, p.cleanString(tagStr))
 		}
-		tags = append(tags, p.cleanString(tagStr))
-	}
-	if !p.acceptOne(lexer.TypeTerminator) {
-		p.errExpectedNext().Tokens(lexer.TypeTerminator)
 	}
 
 	return tags, nil

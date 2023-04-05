@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode"
 
-	"go.burian.dev/c4arch/internal/lexer"
+	"go.burian.dev/c4/compiler/lexer"
 )
 
 // alias for string that can't have spaces
@@ -48,7 +48,7 @@ func (p *Parser) parseString() (string, error) {
 }
 
 func (p *Parser) cleanString(s string) string {
-	s = strings.Trim(s, "\"'`\n")
+	s = strings.Trim(s, "\"'`\n\t\r")
 	return s
 }
 

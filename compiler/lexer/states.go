@@ -14,7 +14,7 @@ func rootState(l *Lexer) stateFn {
 
 		switch l.currentRune {
 		case '\'', '"', '`':
-			return stringState(l)
+			return stringState
 		case '=':
 			l.createToken(TypeAssignment)
 			continue
@@ -25,16 +25,17 @@ func rootState(l *Lexer) stateFn {
 			l.createToken(TypeEndBlock)
 			continue
 		case '#':
-			return lineCommentState(l)
+			l.createError(fmt.Errorf("comments beginning with '#' are not allowed in this grammar, use '//'"))
+			return clearLineState
 		case '!':
 			l.createToken(TypeDirective)
 			continue
 		case '/':
 			if l.acceptOne('/') {
-				return lineCommentState(l)
+				return lineCommentState
 			}
 			if l.acceptOne('*') {
-				return blockCommentState(l)
+				return blockCommentState
 			}
 		case '-':
 			if l.acceptOne('>') {
@@ -53,39 +54,41 @@ func rootState(l *Lexer) stateFn {
 		}
 
 		if unicode.IsSpace(l.currentRune) {
-			return spaceState(l)
+			return spaceState
 		}
 
 		if l.currentRune >= 'a' && l.currentRune <= 'z' {
-			return identifierState(l)
+			return identifierState
 		}
 
-		l.createError(fmt.Errorf("unexpected token %c", l.currentRune))
+		l.createError(fmt.Errorf("unexpected token %q", l.currentRune))
 		return nil
 	}
 }
 
 func spaceState(l *Lexer) stateFn {
 	if l.previousToken.Is(TypeIdentifier, TypeString) {
-		return spaceWithTerminatorState
+		return spaceWithOptionalTerminatorState
 	}
 	l.acceptWhile(unicode.IsSpace)
 	l.discardToCurrent()
 	return rootState
 }
 
-func spaceWithTerminatorState(l *Lexer) stateFn {
+func spaceWithOptionalTerminatorState(l *Lexer) stateFn {
 	for {
-		if l.acceptOne('\t', '\v', '\f', '\r', ' ') {
-			continue
-		}
-		if l.acceptOne('\n') {
+		if l.acceptOne('\n', '\t', '\v', '\f', '\r', ' ') {
+			if l.currentRune != '\n' {
+				continue
+			}
+
 			l.backupOne()
 			l.discardToCurrent()
-			l.createToken(TypeTerminator)
 			l.next()
+			l.createToken(TypeTerminator)
 			return rootState
 		}
+
 		if l.acceptOne(EOF) {
 			l.backupOne()
 			l.discardToCurrent()
@@ -186,10 +189,23 @@ func identifierState(l *Lexer) stateFn {
 		return false
 	})
 
-	if isKeyword(builder.String()) {
+	identifier := builder.String()
+
+	if lastChracter := identifier[len(identifier)-1]; lastChracter == '.' ||
+		lastChracter == '-' || lastChracter == '_' {
+		l.createError(fmt.Errorf("illegal identifier suffix character '%c'", lastChracter))
+	}
+
+	if isKeyword(identifier) {
 		l.createToken(TypeKeyword)
 	} else {
 		l.createToken(TypeIdentifier)
 	}
+	return spaceWithOptionalTerminatorState
+}
+
+func clearLineState(l *Lexer) stateFn {
+	l.acceptWhileNot('\n', EOF)
+	l.discardToCurrent()
 	return spaceState
 }

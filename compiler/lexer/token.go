@@ -80,22 +80,22 @@ func (t TokenType) String() string {
 	case TypeIdentifier:
 		return "Identifier"
 	case TypeAssignment:
-		return "="
+		return "'='"
 	case TypeStartBlock:
-		return "{"
+		return "'{'"
 	case TypeEndBlock:
-		return "}"
+		return "'}'"
 	case TypeDirective:
-		return "!"
+		return "'!'"
 	case TypeRelationship:
-		return "->"
+		return `"->"`
 	case TypeTerminator:
-		return "Newline or terminator (;)"
+		return "Newline or terminator (';')"
 	case TypeEOF:
 		return "End of File"
 
 	case TypeUndefined:
-		return "{UNDEFINED TOKEN}"
+		return "[UNDEFINED TOKEN]"
 
 	}
 	panic("unknown token type")

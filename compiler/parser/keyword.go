@@ -3,7 +3,7 @@ package parser
 import (
 	"strings"
 
-	"go.burian.dev/c4arch/internal/lexer"
+	"go.burian.dev/c4/compiler/lexer"
 )
 
 type Keyword string

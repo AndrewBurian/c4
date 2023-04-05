@@ -1,6 +1,7 @@
 package lexer
 
 import (
+	"reflect"
 	"testing"
 )
 
@@ -28,12 +29,12 @@ func TestLexer_Run(t *testing.T) {
 		},
 		{
 			name:       "comments",
-			input:      `"this is a string"  thisIsAnIdentifier # this all gets ignored`,
+			input:      `"this is a string"  thisIsAnIdentifier // this all gets ignored`,
 			wantTokens: []TokenType{TypeString, TypeIdentifier, TypeTerminator, TypeEOF},
 		},
 		{
 			name:       "lots of tokens",
-			input:      `"string val" id = { } #comment`,
+			input:      `"string val" id = { } //comment`,
 			wantTokens: []TokenType{TypeString, TypeIdentifier, TypeAssignment, TypeStartBlock, TypeEndBlock, TypeEOF},
 		},
 		{
@@ -113,6 +114,97 @@ func TestLexer_Run(t *testing.T) {
 
 				if got.Is(TypeError) {
 					t.Errorf("Lexing error: %s", got.err)
+				}
+			}
+		})
+	}
+}
+
+func TestLexer_Position(t *testing.T) {
+	tests := []struct {
+		name          string
+		input         string
+		wantTokens    []TokenType
+		wantPositions []PositionRange
+	}{
+		{
+			name:  "one string",
+			input: `"a"`,
+
+			wantTokens: []TokenType{TypeString},
+			wantPositions: []PositionRange{
+				{Position{1, 0, "", 0}, Position{1, 3, "", 3}},
+			},
+		},
+		{
+			name:  "unicode",
+			input: `"👍"`,
+
+			wantTokens: []TokenType{TypeString},
+			wantPositions: []PositionRange{
+				{Position{1, 0, "", 0}, Position{1, 3, "", 6}},
+			},
+		},
+		{
+			name:  "two string",
+			input: `'string' 'string'`,
+
+			wantTokens: []TokenType{TypeString, TypeString},
+			wantPositions: []PositionRange{
+				{Position{1, 0, "", 0}, Position{1, 8, "", 8}},
+				{Position{1, 9, "", 9}, Position{1, 17, "", 17}},
+			},
+		},
+		{
+			name:  "newlines",
+			input: "'string'\n'string'",
+
+			wantTokens: []TokenType{TypeString, TypeTerminator, TypeString},
+			wantPositions: []PositionRange{
+				{Position{1, 0, "", 0}, Position{1, 8, "", 8}},
+				{Position{1, 8, "", 8}, Position{1, 9, "", 9}},
+				{Position{2, 0, "", 9}, Position{2, 8, "", 17}},
+			},
+		},
+		{
+			name:  "newlines unicode",
+			input: "'string'\n'st👍'",
+
+			wantTokens: []TokenType{TypeString, TypeTerminator, TypeString},
+			wantPositions: []PositionRange{
+				{Position{1, 0, "", 0}, Position{1, 8, "", 8}},
+				{Position{1, 8, "", 8}, Position{1, 9, "", 9}},
+				{Position{2, 0, "", 9}, Position{2, 5, "", 17}},
+			},
+		},
+		{
+			name:  "newlines multiunicode",
+			input: "'st👍'\n'st👍👍👍'",
+
+			wantTokens: []TokenType{TypeString, TypeTerminator, TypeString},
+			wantPositions: []PositionRange{
+				{Position{1, 0, "", 0}, Position{1, 5, "", 8}},
+				{Position{1, 5, "", 8}, Position{1, 6, "", 9}},
+				{Position{2, 0, "", 9}, Position{2, 7, "", 25}},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := NewLexer([]byte(tt.input))
+			if err := l.Run(); err != nil {
+				t.Fatalf("unexpected lex error: %s", err)
+			}
+			for i := range tt.wantPositions {
+				tok := l.tokens[i]
+				if !tok.Is(tt.wantTokens[i]) {
+					t.Errorf("wrong token type")
+				}
+				if !reflect.DeepEqual(tok.startPosition, &tt.wantPositions[i].Start) {
+					t.Errorf("bad start position for %s: got %v, want %v", tt.wantTokens[i], *tok.startPosition, tt.wantPositions[i].Start)
+				}
+				if !reflect.DeepEqual(tok.endPosition, &tt.wantPositions[i].End) {
+					t.Errorf("bad end position for %s: got %v, want %v", tt.wantTokens[i], *tok.endPosition, tt.wantPositions[i].End)
 				}
 			}
 		})
