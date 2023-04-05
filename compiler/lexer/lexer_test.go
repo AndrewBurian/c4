@@ -23,6 +23,21 @@ func TestLexer_Run(t *testing.T) {
 			wantTokens: []TokenType{TypeString, TypeString, TypeTerminator, TypeEOF},
 		},
 		{
+			name:       "mixed string quotes",
+			input:      `'yay for "me"'`,
+			wantTokens: []TokenType{TypeString, TypeTerminator, TypeEOF},
+		},
+		{
+			name:       "escaped quote",
+			input:      `"still one \"string\""`,
+			wantTokens: []TokenType{TypeString, TypeTerminator, TypeEOF},
+		},
+		{
+			name:       "escaped escape",
+			input:      `"\\"`,
+			wantTokens: []TokenType{TypeString, TypeTerminator, TypeEOF},
+		},
+		{
 			name:       "identifiers",
 			input:      `"this is a string"  thisIsAnIdentifier "and another string"`,
 			wantTokens: []TokenType{TypeString, TypeIdentifier, TypeString, TypeTerminator, TypeEOF},

@@ -26,7 +26,7 @@ func rootState(l *Lexer) stateFn {
 			continue
 		case '#':
 			l.createError(fmt.Errorf("comments beginning with '#' are not allowed in this grammar, use '//'"))
-			return clearLineState
+			return errorState
 		case '!':
 			l.createToken(TypeDirective)
 			continue
@@ -62,7 +62,7 @@ func rootState(l *Lexer) stateFn {
 		}
 
 		l.createError(fmt.Errorf("unexpected token %q", l.currentRune))
-		return nil
+		return errorState
 	}
 }
 
@@ -93,7 +93,8 @@ func spaceWithOptionalTerminatorState(l *Lexer) stateFn {
 			l.backupOne()
 			l.discardToCurrent()
 			l.createToken(TypeTerminator)
-			return rootState
+			l.createToken(TypeEOF)
+			return nil
 		}
 
 		l.discardToCurrent()
@@ -128,6 +129,7 @@ func blockCommentState(l *Lexer) stateFn {
 
 func stringState(l *Lexer) stateFn {
 	quote := l.currentRune
+	activeEscape := false
 
 	// consume all characters
 	l.acceptWhile(func(r rune) bool {
@@ -139,8 +141,17 @@ func stringState(l *Lexer) stateFn {
 			return false
 		}
 
+		if activeEscape {
+			activeEscape = false
+			return true
+		}
+
+		if r == '\\' {
+			activeEscape = true
+		}
+
 		if r == quote {
-			return l.previousRune == '\\'
+			return false
 		}
 
 		return true
@@ -148,32 +159,17 @@ func stringState(l *Lexer) stateFn {
 
 	if l.acceptOne(EOF) {
 		l.createError(fmt.Errorf("unexpected EOF: expected end of string"))
-		l.backupOne()
-		return rootState
+		l.createToken(TypeEOF)
+		return nil
 	}
 	if l.acceptOne(quote) {
 		l.createToken(TypeString)
-		return spaceState
+		return spaceWithOptionalTerminatorState
 	}
 
 	r := l.next()
 	l.createError(fmt.Errorf("unexpected value in string: %q", r))
-	l.backupOne()
-	return rootState
-}
-
-func multilineStringState(l *Lexer) stateFn {
-	l.acceptWhile(func(r rune) bool {
-		return r != '`'
-	})
-
-	if l.currentRune != '`' {
-		l.createError(fmt.Errorf("unexpected end of multiline string"))
-		return rootState
-	}
-
-	l.createToken(TypeString)
-	return rootState
+	return errorState
 }
 
 func identifierState(l *Lexer) stateFn {
@@ -194,6 +190,7 @@ func identifierState(l *Lexer) stateFn {
 	if lastChracter := identifier[len(identifier)-1]; lastChracter == '.' ||
 		lastChracter == '-' || lastChracter == '_' {
 		l.createError(fmt.Errorf("illegal identifier suffix character '%c'", lastChracter))
+		return errorState
 	}
 
 	if isKeyword(identifier) {
@@ -204,8 +201,25 @@ func identifierState(l *Lexer) stateFn {
 	return spaceWithOptionalTerminatorState
 }
 
-func clearLineState(l *Lexer) stateFn {
-	l.acceptWhileNot('\n', EOF)
-	l.discardToCurrent()
+// Dead simple error handling
+// - If at EOF, end
+// - If mid character stream, clear it
+// - If mid space, clear it out
+func errorState(l *Lexer) stateFn {
+	if l.atEOF {
+		return nil
+	}
+	if !unicode.IsSpace(l.currentRune) {
+		return clearCharacterState
+	}
 	return spaceState
+}
+
+func clearCharacterState(l *Lexer) stateFn {
+	l.acceptWhile(func(r rune) bool {
+		return !unicode.IsSpace(r)
+	})
+
+	l.discardToCurrent()
+	return rootState
 }
