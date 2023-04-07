@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode"
 
-	"go.burian.dev/c4/compiler/lexer"
+	"go.burian.dev/c4/cmd/compiler/internal/lexer"
 )
 
 // alias for string that can't have spaces

@@ -5,8 +5,8 @@ import (
 	"path"
 	"strings"
 
-	"go.burian.dev/c4/compiler/lexer"
-	"go.burian.dev/c4/compiler/loader"
+	"go.burian.dev/c4/cmd/compiler/internal/lexer"
+	"go.burian.dev/c4/cmd/compiler/internal/loader"
 )
 
 type Parser struct {
@@ -21,7 +21,7 @@ type Parser struct {
 	currentFile     string
 	currentUniqueId int
 
-	load  *loader.Loader
+	load  loader.Loader
 	lexer *lexer.Lexer
 
 	workspaces map[IdentifierString]*Workspace

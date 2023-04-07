@@ -1,0 +1,4 @@
+this is a plain file
+#define foo bar
+foo
+#include other.c4

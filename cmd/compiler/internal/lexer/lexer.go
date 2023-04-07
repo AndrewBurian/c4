@@ -9,39 +9,42 @@ import (
 const EOF = rune(-1)
 
 type Lexer struct {
-	inputBuffer *bytes.Buffer
-	input       []byte
+	inputBuffer *bytes.Reader
 
 	currentRune     rune
 	currentRuneSize int
 	canBackup       bool
+	atEOF            bool
 
 	previousRune     rune
 	previousLineCols int
 
+	cursor        *PositionRange
 	startPosition *Position
 	endPosition   *Position
-
-	atEOF bool
 
 	state stateFn
 	err   error
 
-	lastReadToken *Token
 	tokens        []*Token
+	lastReadToken *Token
 	previousToken *Token
 	tokenCursor   int
-	peekToken     *Token
 }
 
-func NewLexer(input []byte) *Lexer {
+// Run clears the state of the lexer and starts it again with a new input
+func (l *Lexer) Run(input *bytes.Reader) error {
 
-	l := new(Lexer)
-
-	l.input = input
-	l.inputBuffer = bytes.NewBuffer(input)
+	l.inputBuffer = input
 
 	l.currentRune = 0
+	l.atEOF = false
+	
+	l.canBackup = false
+	l.previousRune = 0
+	l.previousLineCols = 0
+	
+	l.cursor = new(PositionRange)
 	l.startPosition = new(Position)
 	l.endPosition = new(Position)
 	l.startPosition.Line = 1
@@ -49,40 +52,21 @@ func NewLexer(input []byte) *Lexer {
 	l.startPosition.Column = 0
 
 	l.endPosition.SetTo(l.startPosition)
-	//l.endPosition.Offset(1, 1)
+	l.cursor.truncateForward()
 
 	l.state = rootState
+	l.err = nil
 
 	l.tokenCursor = -1
+	if l.tokens != nil {
+		l.tokens = l.tokens[0:0]
+	}
 
-	return l
-}
-
-func (l *Lexer) Run() error {
 	for l.state != nil {
 		l.state = l.state(l)
 	}
 
 	return l.err
-}
-
-func (l *Lexer) NextToken() *Token {
-
-	l.tokenCursor++
-
-	if l.tokenCursor < len(l.tokens) {
-		l.lastReadToken = l.tokens[l.tokenCursor]
-	}
-
-	if l.tokenCursor+1 < len(l.tokens) {
-		l.peekToken = l.tokens[l.tokenCursor+1]
-	}
-
-	return l.lastReadToken
-}
-
-func (l *Lexer) BackupToken() {
-	l.tokenCursor--
 }
 
 func (l *Lexer) next() rune {
@@ -103,12 +87,16 @@ func (l *Lexer) next() rune {
 	}
 
 	l.endPosition.Column++
+	l.cursor.End.Column++
 	l.endPosition.ByteOffset += s
+	l.cursor.End.ByteOffset += s
 	l.currentRuneSize = s
 	if l.currentRune == '\n' {
 		l.endPosition.Line++
-		l.previousLineCols = l.endPosition.Column
+		l.cursor.End.Line++
+		l.previousLineCols = l.cursor.End.Column
 		l.endPosition.Column = 1
+		l.cursor.End.Column = 1
 	}
 
 	l.previousRune = l.currentRune
@@ -131,14 +119,18 @@ func (l *Lexer) backupOne() {
 	}
 
 	l.endPosition.ByteOffset = l.endPosition.ByteOffset - l.currentRuneSize
+	l.cursor.End.ByteOffset = l.endPosition.ByteOffset - l.currentRuneSize
 	l.endPosition.Column--
+	l.cursor.End.Column--
 	l.currentRune = l.previousRune
 	if l.currentRune == '\n' {
 		l.endPosition.Line--
+		l.cursor.End.Line--
 		l.endPosition.Column = l.previousLineCols
-
+		l.cursor.End.Column = l.previousLineCols
 	}
 
+	l.currentRune = l.previousRune
 	l.previousRune = 0
 	l.canBackup = false
 	l.atEOF = false
@@ -179,6 +171,7 @@ func (l *Lexer) acceptWhileNot(not ...rune) {
 func (l *Lexer) createToken(t TokenType) {
 	tok := &Token{
 		tokenType:     t,
+		position:      l.cursor.Clone(),
 		startPosition: new(Position),
 		endPosition:   new(Position),
 	}

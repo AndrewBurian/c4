@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"go.burian.dev/c4/compiler/lexer"
+	"go.burian.dev/c4/cmd/compiler/internal/lexer"
 )
 
 const (

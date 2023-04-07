@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"go.burian.dev/c4/compiler/lexer"
+	"go.burian.dev/c4/cmd/compiler/internal/lexer"
 )
 
 type Entity interface {

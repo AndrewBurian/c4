@@ -6,6 +6,7 @@ type Token struct {
 	tokenType     TokenType
 	startPosition *Position
 	endPosition   *Position
+	position      *PositionRange
 	err           error
 }
 

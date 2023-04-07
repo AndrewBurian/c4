@@ -14,6 +14,19 @@ type PositionRange struct {
 	End   Position
 }
 
+func (p *PositionRange) truncateForward() {
+	p.Start.ByteOffset = p.End.ByteOffset
+	p.Start.Line = p.End.Line
+	p.Start.Column = p.End.Column
+	p.Start.File = p.End.File
+}
+
+func (p *PositionRange) Clone() *PositionRange {
+	n := new(PositionRange)
+	*n = *p
+	return n
+}
+
 func (p1 *Position) SetTo(p2 *Position) {
 	p1.ByteOffset = p2.ByteOffset
 	p1.Line = p2.Line

@@ -1,6 +1,7 @@
 package lexer
 
 import (
+	"bytes"
 	"reflect"
 	"testing"
 )
@@ -105,17 +106,22 @@ func TestLexer_Run(t *testing.T) {
 			},
 		},
 	}
+
+	l := new(Lexer)
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := NewLexer([]byte(tt.input))
+
+			input := bytes.NewReader([]byte(tt.input))
 
 			t.Log(tt.input)
-			if err := l.Run(); (err != nil) != tt.wantErr {
+			if err := l.Run(input); (err != nil) != tt.wantErr {
 				t.Errorf("Lexer.Run() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
 			if len(tt.wantTokens) != len(l.tokens) {
 				t.Errorf("Lexer returned wrong number of tokens: expected = %d / got = %d", len(tt.wantTokens), len(l.tokens))
+				t.Log(l.tokens)
 			}
 
 			for i, got := range l.tokens {
@@ -204,10 +210,11 @@ func TestLexer_Position(t *testing.T) {
 			},
 		},
 	}
+	l := new(Lexer)
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := NewLexer([]byte(tt.input))
-			if err := l.Run(); err != nil {
+			input := bytes.NewReader([]byte(tt.input))
+			if err := l.Run(input); err != nil {
 				t.Fatalf("unexpected lex error: %s", err)
 			}
 			for i := range tt.wantPositions {
