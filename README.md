@@ -195,8 +195,8 @@ Directive | Description
 ----------|------------
 `#include <path>` | Injects the contents of the given file inline. Path may be relative or absolute to the local filesystem. Failure to read the file causes processing to stop
 `#include? <path>` | Same as `#include` but failure to read the file will not stop processing.
-`#load https://<url>` | Same as `#include` but fetches from remote hosts.   This only supports `https://` schemes. URI fragments (trailing `#` such as `https://url#foo`) are not included. Files may be cached by the compiler according to their `Cache-Control` headers.
-`#load? https://<url>` | Same as `#include?`
+`#fetch https://<url>` | Same as `#include` but fetches from remote hosts.   This only supports `https://` schemes. URI fragments (trailing `#` such as `https://url#foo`) are not included. Files may be cached by the compiler according to their `Cache-Control` headers.
+`#fetch? https://<url>` | Same as `#include?`
 
 ```javascript
 // includes the contents of ./common/my-container.c4
@@ -212,11 +212,13 @@ The compiler is divided up into three stages: Lexing, Parsing, and Checking.
 
 ## Loading
 
-As the step before any actual compilation starts, the loader is extremely simple.
+As the step before any actual compilation starts, the loader is relatively simple.
 
-It loads files, finds and processes pre-processing directives, and then fetches other local or external resources if needed.
+It loads files, finds and processes pre-processing directives, and then fetches other local or external resources if needed. To support many resources across many compilations, the loader is broken into three layers, fetching, pre-processing, and caching. 
 
-The Loader then supplies named byte-streams to the rest of the compiler to act on.
+This process is also one of the few that is thread-safe, allowing for fetching of resources in parallel. Other componenets of the compiler get references to the DSL bytes in memory from the loader. They all share the same underlying data, but each get their own `bytes.Reader` allocated on top of them to allow safe concurrent reads.
+
+The loader is at [`compiler/loader`](./compiler/loader)
 
 ## Lexing
 
