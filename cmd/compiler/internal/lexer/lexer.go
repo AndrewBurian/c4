@@ -14,14 +14,12 @@ type Lexer struct {
 	currentRune     rune
 	currentRuneSize int
 	canBackup       bool
-	atEOF            bool
+	atEOF           bool
 
 	previousRune     rune
 	previousLineCols int
 
-	cursor        *PositionRange
-	startPosition *Position
-	endPosition   *Position
+	cursor *PositionRange
 
 	state stateFn
 	err   error
@@ -39,19 +37,13 @@ func (l *Lexer) Run(input *bytes.Reader) error {
 
 	l.currentRune = 0
 	l.atEOF = false
-	
+
 	l.canBackup = false
 	l.previousRune = 0
 	l.previousLineCols = 0
-	
-	l.cursor = new(PositionRange)
-	l.startPosition = new(Position)
-	l.endPosition = new(Position)
-	l.startPosition.Line = 1
-	l.startPosition.ByteOffset = 0
-	l.startPosition.Column = 0
 
-	l.endPosition.SetTo(l.startPosition)
+	l.cursor = new(PositionRange)
+	l.cursor.End.Line = 1
 	l.cursor.truncateForward()
 
 	l.state = rootState
@@ -86,16 +78,12 @@ func (l *Lexer) next() rune {
 		panic(err)
 	}
 
-	l.endPosition.Column++
 	l.cursor.End.Column++
-	l.endPosition.ByteOffset += s
 	l.cursor.End.ByteOffset += s
 	l.currentRuneSize = s
 	if l.currentRune == '\n' {
-		l.endPosition.Line++
 		l.cursor.End.Line++
 		l.previousLineCols = l.cursor.End.Column
-		l.endPosition.Column = 1
 		l.cursor.End.Column = 1
 	}
 
@@ -118,15 +106,11 @@ func (l *Lexer) backupOne() {
 		}
 	}
 
-	l.endPosition.ByteOffset = l.endPosition.ByteOffset - l.currentRuneSize
-	l.cursor.End.ByteOffset = l.endPosition.ByteOffset - l.currentRuneSize
-	l.endPosition.Column--
+	l.cursor.End.ByteOffset = l.cursor.End.ByteOffset - l.currentRuneSize
 	l.cursor.End.Column--
 	l.currentRune = l.previousRune
 	if l.currentRune == '\n' {
-		l.endPosition.Line--
 		l.cursor.End.Line--
-		l.endPosition.Column = l.previousLineCols
 		l.cursor.End.Column = l.previousLineCols
 	}
 
@@ -170,13 +154,10 @@ func (l *Lexer) acceptWhileNot(not ...rune) {
 
 func (l *Lexer) createToken(t TokenType) {
 	tok := &Token{
-		tokenType:     t,
-		position:      l.cursor.Clone(),
-		startPosition: new(Position),
-		endPosition:   new(Position),
+		tokenType: t,
+		position:  l.cursor.Clone(),
 	}
-	tok.startPosition.SetTo(l.startPosition)
-	tok.endPosition.SetTo(l.endPosition)
+
 	l.tokens = append(l.tokens, tok)
 	l.previousToken = tok
 
@@ -185,13 +166,10 @@ func (l *Lexer) createToken(t TokenType) {
 
 func (l *Lexer) createError(err error) {
 	tok := &Token{
-		tokenType:     TypeError,
-		err:           err,
-		startPosition: new(Position),
-		endPosition:   new(Position),
+		tokenType: TypeError,
+		err:       err,
+		position:  l.cursor.Clone(),
 	}
-	tok.startPosition.SetTo(l.startPosition)
-	tok.endPosition.SetTo(l.endPosition)
 	l.tokens = append(l.tokens, tok)
 	l.previousToken = tok
 
@@ -203,7 +181,7 @@ func (l *Lexer) discardToCurrent() {
 		return
 	}
 
-	l.startPosition.SetTo(l.endPosition)
+	l.cursor.truncateForward()
 
 	/*
 				If this is the end of the line, things get weird
@@ -229,7 +207,7 @@ func (l *Lexer) discardToCurrent() {
 
 	*/
 	if l.currentRune == '\n' {
-		l.startPosition.Line++
-		l.startPosition.Column = 0
+		l.cursor.Start.Line++
+		l.cursor.Start.Column = 0
 	}
 }

@@ -3,11 +3,9 @@ package lexer
 import "fmt"
 
 type Token struct {
-	tokenType     TokenType
-	startPosition *Position
-	endPosition   *Position
-	position      *PositionRange
-	err           error
+	tokenType TokenType
+	position  *PositionRange
+	err       error
 }
 
 func (t *Token) Is(ty ...TokenType) bool {
@@ -27,19 +25,16 @@ func (t *Token) Type() TokenType {
 }
 
 func (t *Token) BytesAt(code []byte) []byte {
-	return code[t.startPosition.ByteOffset:t.endPosition.ByteOffset]
+	return code[t.position.Start.ByteOffset:t.position.End.ByteOffset]
 }
 
-func (t *Token) Positions() (start, end *Position) {
-	start, end = new(Position), new(Position)
-	start.SetTo(t.startPosition)
-	end.SetTo(t.endPosition)
-	return
+func (t *Token) Positions() *PositionRange {
+	return t.position.Clone()
 }
 
 func (t *Token) CodeLineAt(code []byte) string {
-	byteStart := t.startPosition.ByteOffset - t.startPosition.Column
-	byteEnd := t.endPosition.ByteOffset
+	byteStart := t.position.Start.ByteOffset - t.position.Start.Column
+	byteEnd := t.position.End.ByteOffset
 
 	return string(code[byteStart:byteEnd])
 }

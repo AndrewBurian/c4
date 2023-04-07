@@ -222,11 +222,10 @@ func TestLexer_Position(t *testing.T) {
 				if !tok.Is(tt.wantTokens[i]) {
 					t.Errorf("wrong token type")
 				}
-				if !reflect.DeepEqual(tok.startPosition, &tt.wantPositions[i].Start) {
-					t.Errorf("bad start position for %s: got %v, want %v", tt.wantTokens[i], *tok.startPosition, tt.wantPositions[i].Start)
-				}
-				if !reflect.DeepEqual(tok.endPosition, &tt.wantPositions[i].End) {
-					t.Errorf("bad end position for %s: got %v, want %v", tt.wantTokens[i], *tok.endPosition, tt.wantPositions[i].End)
+				if !reflect.DeepEqual(*tok.position, tt.wantPositions[i]) {
+					t.Errorf("bad start position for %s: got (start: %v end: %v), want (start: %v end: %v)", tt.wantTokens[i],
+						tok.position.Start, tok.position.End,
+						tt.wantPositions[i].Start, tt.wantPositions[i].End)
 				}
 			}
 		})
