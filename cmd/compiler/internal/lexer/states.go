@@ -25,8 +25,7 @@ func rootState(l *Lexer) stateFn {
 			l.createToken(TypeEndBlock)
 			continue
 		case '#':
-			l.createError(fmt.Errorf("comments beginning with '#' are not allowed in this grammar, use '//'"))
-			return errorState
+			return pragmaState
 		case '!':
 			l.createToken(TypeDirective)
 			continue
@@ -73,6 +72,19 @@ func spaceState(l *Lexer) stateFn {
 	l.acceptWhile(unicode.IsSpace)
 	l.discardToCurrent()
 	return rootState
+}
+
+func pragmaState(l *Lexer) stateFn {
+	l.acceptWhile(func(r rune) bool {
+		if (r >= 'a' && r <= 'z') ||
+			(r == '_') {
+			return true
+		}
+		return false
+	})
+
+	l.createToken(TypePragma)
+	return spaceState
 }
 
 func spaceWithOptionalTerminatorState(l *Lexer) stateFn {

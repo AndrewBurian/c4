@@ -11,20 +11,20 @@ type Loader interface {
 	Load(context.Context, string) (*bytes.Reader, error)
 }
 
-type Fetcher interface {
+type fetcher interface {
 	Fetch(context.Context, *url.URL) (*bytes.Buffer, error)
 }
 
-type Cache interface {
-	Fetcher
+type cache interface {
+	fetcher
 
 	Store(*url.URL, *bytes.Buffer) error
 	Has(*url.URL) bool
 }
 
 type sourceLoader struct {
-	cache   Cache
-	fetcher Fetcher
+	cache   cache
+	fetcher fetcher
 
 	config *sourceLoadConfig
 
@@ -48,7 +48,7 @@ func (l *sourceLoader) Load(ctx context.Context, uri string) (*bytes.Reader, err
 		return bytes.NewReader(buf.Bytes()), nil
 	}
 
-	var f Fetcher
+	var f fetcher
 	if l.fetcher != nil {
 		f = l.fetcher
 	} else {

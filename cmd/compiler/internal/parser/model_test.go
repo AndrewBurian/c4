@@ -4,10 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
-	"go.burian.dev/c4/compiler/lexer"
+	"go.burian.dev/c4/cmd/compiler/internal/lexer"
 )
 
 func jsonMust(o any) []byte {
@@ -26,20 +29,22 @@ func visualCompare(t *testing.T, want, got any, contextLines int) {
 	gotLines := bufio.NewScanner(bytes.NewBuffer(jsonMust(got)))
 	gotLines.Split(bufio.ScanLines)
 
+	out := new(strings.Builder)
+	out.WriteString("Comparison of objects:\n")
 	for wantLines.Scan() {
 		if !gotLines.Scan() {
 			return
 		}
-
-		t.Logf("\nwant %s\ngot  %s", wantLines.Text(), gotLines.Text())
-
-		if contextLines == 0 {
-			return
-		}
+		indicator := "    "
 		if wantLines.Text() != gotLines.Text() {
-			contextLines--
+			indicator = "!! >"
 		}
+
+		fmt.Fprintf(out, "\nwant %s %s\ngot  %s %s", indicator, wantLines.Text(), indicator, gotLines.Text())
+
 	}
+
+	t.Log(out.String())
 }
 
 func TestParser_runParse(t *testing.T) {
@@ -282,23 +287,15 @@ func TestParser_runParse(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := new(Parser)
-			p.reset()
-			p.code = []byte(tt.input)
-			p.lexer = lexer.NewLexer([]byte(tt.input))
-			err := p.lexer.Run()
-			if err != nil {
-				t.Fatalf("Error running lexer: %s", err)
-			}
 
-			var got []*Workspace
-			func() {
-				defer func() {
-					if panVal := recover(); panVal != nil {
-						t.Fatalf("function panicked: %s", panVal)
-					}
-				}()
-				got, err = p.runParse()
-			}()
+			// l := new(lexer.Lexer)
+			// if err := l.Run(bytes.NewReader([]byte(tt.input))); err != nil {
+			// 	t.Fatalf("lexer error on test input: %s", err)
+			// }
+
+			mts := &mockDependencies{lexers: make(map[string]*lexer.Lexer), sources: map[string]string{"test": tt.input}}
+			got, err := p.Run("test", mts)
+
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Parser.runParse() error = %v", err)
 				return
@@ -307,10 +304,89 @@ func TestParser_runParse(t *testing.T) {
 				t.Log(err)
 				return
 			}
-			if !reflect.DeepEqual(got[0], tt.want) {
+			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("Returned objects don't match")
-				visualCompare(t, tt.want, got[0], 3)
+				visualCompare(t, tt.want, got, 3)
 			}
 		})
 	}
+}
+
+func TestParseInclude(t *testing.T) {
+
+	sources := map[string]string{
+		"base.c4": `
+			workspace {
+				model{
+					a = softwaresystem 'a' {
+						properties {
+							"foo" "bar"
+						}
+					}
+					b = #include 'include.c4'
+					#include 'include.c4'
+				}
+			}
+		`,
+		"include.c4": `softwaresystem 'remoteB' { properties { "bar" "baz"; } }`,
+	}
+
+	want := &Workspace{
+		Model: &Model{
+			baseEntity: baseEntity{
+				childEntities: childEntities{
+					NamedEntities: map[IdentifierString]Entity{
+						"a": &SoftwareSystem{
+							baseEntity{
+								Name:    "a",
+								LocalId: "a",
+								Properties: map[string]string{
+									"foo": "bar",
+								},
+							},
+						},
+						"b": &SoftwareSystem{
+							baseEntity{
+								Name:    "remoteB",
+								LocalId: "b",
+								Properties: map[string]string{
+									"bar": "baz",
+								},
+							},
+						},
+						"_softwaresystem00_remoteb": &SoftwareSystem{
+							baseEntity{
+								Name:    "remoteB",
+								LocalId: "_softwaresystem00_remoteb",
+								Properties: map[string]string{
+									"bar": "baz",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	p := new(Parser)
+	_ = 1
+
+	mts := &mockDependencies{lexers: make(map[string]*lexer.Lexer), sources: sources}
+	got, err := p.Run("base.c4", mts)
+
+	if err != nil {
+		var e *ExpectationError
+		if errors.As(err, &e) {
+			t.Logf("at token: %s", e.gotToken.String())
+		}
+		t.Fatalf("Parser.runParse() error = %v", err)
+		return
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Returned objects don't match")
+		visualCompare(t, want, got, 3)
+	}
+
 }

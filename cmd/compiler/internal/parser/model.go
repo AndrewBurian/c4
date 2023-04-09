@@ -10,7 +10,6 @@ type Workspace struct {
 	baseEntity
 
 	Extends string `json:"extends,omitempty"`
-	File    string `json:"file,omitempty"`
 	Model   *Model `json:"model,omitempty"`
 	Views   *Views `json:"views,omitempty"`
 }
@@ -49,39 +48,26 @@ type Component struct {
 	baseEntity
 }
 
-func (p *Parser) runParse() ([]*Workspace, error) {
+func (p *Parser) runParse() (*Workspace, error) {
 
-	var works []*Workspace
-
-	for {
-
-		if p.acceptOne(lexer.TypeEOF) {
-			if len(works) < 1 {
-				// read at least one workspace
-				return nil, p.errExpectedNext().Keywords(KeywordWorkspace)
-			}
-			return works, nil
-		}
-		if p.acceptOne(lexer.TypeKeyword) {
-			if p.currentKeyword() != KeywordWorkspace {
-				return nil, p.errExpectedNext().Keywords(KeywordWorkspace)
-			}
-
-			w, err := p.parseWorkspace()
-			if err != nil {
-				return nil, fmt.Errorf("error parsing workspace:\n> %w", err)
-			}
-			works = append(works, w)
-			continue
-		}
+	if !p.acceptOne(lexer.TypeKeyword) {
 		return nil, p.errExpectedNext().Keywords(KeywordWorkspace)
-
 	}
+
+	work, err := p.parseWorkspace()
+	if err != nil {
+		return nil, err
+	}
+
+	if !p.acceptOne(lexer.TypeEOF) {
+		return nil, p.errExpectedNext().Tokens(lexer.TypeEOF)
+	}
+
+	return work, nil
 }
 
 func (p *Parser) parseWorkspace() (*Workspace, error) {
 	wk := new(Workspace)
-	wk.File = p.currentFile
 	var err error
 
 	// looking for `extends <path>`
@@ -155,7 +141,7 @@ func (p *Parser) parseWorkspace() (*Workspace, error) {
 					return nil, fmt.Errorf("invalid redefinition of model")
 				}
 				if wk.Model, err = p.parseModel(); err != nil {
-					return nil, fmt.Errorf("error parsing workspace definition:\n> %w", err)
+					return nil, fmt.Errorf("error parsing model in workspace definition:\n> %w", err)
 				}
 				continue
 
@@ -165,7 +151,7 @@ func (p *Parser) parseWorkspace() (*Workspace, error) {
 				}
 
 				if wk.Views, err = p.parseViews(); err != nil {
-					return nil, fmt.Errorf("error parsing views definition:\n> %w", err)
+					return nil, fmt.Errorf("error parsing views in workspace definition:\n> %w", err)
 				}
 				continue
 
@@ -332,7 +318,7 @@ func (p *Parser) parseEntityNameOrRelationship(entity Relatable) (err error) {
 
 	r, err := p.parseRelationship(p.claimHeldIdentifier())
 	if err != nil {
-		return fmt.Errorf("error parsing model:\n> %w", err)
+		return fmt.Errorf("error parsing relationship:\n> %w", err)
 	}
 	entity.SetRelationship(r)
 
@@ -371,7 +357,7 @@ func (p *Parser) parseModelGroup(m *Model) error {
 		case KeywordPerson:
 			pers, err := p.parsePerson()
 			if err != nil {
-				return fmt.Errorf("error parsing model group %s:\n> %w", currentGroup, err)
+				return fmt.Errorf("error parsing person in model group %s:\n> %w", currentGroup, err)
 			}
 			pers.Group = currentGroup
 			p.assignIdentifier(pers)
@@ -381,7 +367,7 @@ func (p *Parser) parseModelGroup(m *Model) error {
 		case KeywordSoftwareSystem:
 			ss, err := p.parseSoftwareSys()
 			if err != nil {
-				return fmt.Errorf("error parsing model group %s:\n> %w", currentGroup, err)
+				return fmt.Errorf("error parsing softwaresystem in model group %s:\n> %w", currentGroup, err)
 			}
 			ss.Group = currentGroup
 			p.assignIdentifier(ss)
@@ -422,7 +408,7 @@ func (p *Parser) parseSoftwareSysGroup(ss *SoftwareSystem) error {
 
 		c, err := p.parseContainer()
 		if err != nil {
-			return fmt.Errorf("error parsing software system group:\n> %w", err)
+			return fmt.Errorf("error parsing container in software system group:\n> %w", err)
 		}
 		p.assignGroup(c)
 		ss.Add(c)

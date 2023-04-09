@@ -1,5 +1,7 @@
 package lexer
 
+import "fmt"
+
 type Position struct {
 	Line   int
 	Column int
@@ -25,4 +27,12 @@ func (p *PositionRange) Clone() *PositionRange {
 	n := new(PositionRange)
 	*n = *p
 	return n
+}
+
+func (pr *PositionRange) String() string {
+	return fmt.Sprintf("File: '%s', line %d col %d (%d bytes)",
+		pr.Start.File,
+		pr.Start.Line, pr.Start.Column,
+		pr.End.ByteOffset-pr.Start.ByteOffset,
+	)
 }

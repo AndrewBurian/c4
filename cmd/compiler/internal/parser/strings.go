@@ -42,7 +42,7 @@ func (p *Parser) parseString() (string, error) {
 
 	str := p.currentSymbol()
 	if strings.ContainsRune(str, '\n') {
-		return "", fmt.Errorf("multiline string not allowed in this context")
+		return "", ErrorForToken(p.currentToken, fmt.Errorf("multiline string not allowed in this context"))
 	}
 	return p.cleanString(str), nil
 }

@@ -2,10 +2,24 @@ package lexer
 
 type TokenStream interface {
 	NextToken() *Token
-	BackupToken() error
+	BackupToken()
 }
 
-func (l *Lexer) NextToken() *Token {
+type stream struct {
+	tokens        []*Token
+	tokenCursor   int
+	lastReadToken *Token
+}
+
+func (l *Lexer) TokenStream() TokenStream {
+	return &stream{
+		tokens:        l.tokens,
+		tokenCursor:   -1,
+		lastReadToken: nil,
+	}
+}
+
+func (l *stream) NextToken() *Token {
 
 	l.tokenCursor++
 
@@ -16,6 +30,9 @@ func (l *Lexer) NextToken() *Token {
 	return l.lastReadToken
 }
 
-func (l *Lexer) BackupToken() {
+func (l *stream) BackupToken() {
+	if l.tokenCursor < 0 {
+		return
+	}
 	l.tokenCursor--
 }

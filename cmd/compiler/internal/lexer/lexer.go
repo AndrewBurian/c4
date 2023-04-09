@@ -3,6 +3,7 @@ package lexer
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 )
 
@@ -25,13 +26,21 @@ type Lexer struct {
 	err   error
 
 	tokens        []*Token
-	lastReadToken *Token
 	previousToken *Token
 	tokenCursor   int
 }
 
+type Provider interface {
+	GetSourceFor(string) (*bytes.Reader, error)
+}
+
 // Run clears the state of the lexer and starts it again with a new input
-func (l *Lexer) Run(input *bytes.Reader) error {
+func (l *Lexer) Run(target string, deps Provider) error {
+
+	input, err := deps.GetSourceFor(target)
+	if err != nil {
+		return fmt.Errorf("unable to get source for lexing: %w", err)
+	}
 
 	l.inputBuffer = input
 
@@ -44,6 +53,8 @@ func (l *Lexer) Run(input *bytes.Reader) error {
 
 	l.cursor = new(PositionRange)
 	l.cursor.End.Line = 1
+	l.cursor.End.File = target
+	l.cursor.Start.File = target
 	l.cursor.truncateForward()
 
 	l.state = rootState

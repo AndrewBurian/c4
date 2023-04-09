@@ -32,18 +32,11 @@ func (t *Token) Positions() *PositionRange {
 	return t.position.Clone()
 }
 
-func (t *Token) CodeLineAt(code []byte) string {
-	byteStart := t.position.Start.ByteOffset - t.position.Start.Column
-	byteEnd := t.position.End.ByteOffset
-
-	return string(code[byteStart:byteEnd])
-}
-
 func (t *Token) String() string {
-	if t.err == nil {
-		return t.Type().String()
+	if t.err != nil {
+		return fmt.Sprintf("Error(%s) at (%s)", t.err, t.position)
 	}
-	return fmt.Sprintf("Error(%s)", t.err)
+	return fmt.Sprintf("%s at (%s)", t.Type(), t.position)
 }
 
 type TokenType int
@@ -61,6 +54,7 @@ const (
 	TypeDirective
 	TypeTerminator
 	TypeRelationship
+	TypePragma
 
 	TypeEOF
 )
@@ -89,6 +83,8 @@ func (t TokenType) String() string {
 		return "Newline or terminator (';')"
 	case TypeEOF:
 		return "End of File"
+	case TypePragma:
+		return "#Pragma"
 
 	case TypeUndefined:
 		return "[UNDEFINED TOKEN]"

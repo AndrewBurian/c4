@@ -105,6 +105,11 @@ func TestLexer_Run(t *testing.T) {
 				TypeEndBlock, TypeEOF,
 			},
 		},
+		{
+			name:       "pragmas",
+			input:      `"foo" #include_file`,
+			wantTokens: []TokenType{TypeString, TypePragma, TypeEOF},
+		},
 	}
 
 	l := new(Lexer)

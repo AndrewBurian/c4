@@ -149,11 +149,16 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 		return false
 	}
 
+	holdingName := false
+
 	for {
+		// accept an identifier string, assuming what follows next will either be
+		// a relationship of a keyword
 		if p.acceptIdentifierString() {
 			if err := p.parseEntityNameOrRelationship(e); err != nil {
 				return fmt.Errorf("error parsing entity:\n> %w", err)
 			}
+			holdingName = true
 			continue
 		}
 
@@ -166,6 +171,11 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 			continue
 		}
 
+		// empty declarations aren't an error, just odd
+		if p.acceptOne(lexer.TypeTerminator) {
+			continue
+		}
+
 		if p.acceptOne(lexer.TypeKeyword) {
 			if !allowedKeyword(p.currentKeyword(), allowed) {
 				return p.errExpectedCurrent().Tokens(lexer.TypeIdentifier).Keywords(allowed...)
@@ -174,6 +184,9 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 			switch p.currentKeyword() {
 
 			case KeywordDescription:
+				if holdingName {
+					return fmt.Errorf("illegal description assignment to identifier")
+				}
 				if e.Description != "" {
 					return fmt.Errorf("illegal redeclaration of description in body")
 				}
@@ -359,7 +372,7 @@ func (p *Parser) parseProperties() (map[string]string, error) {
 		}
 
 		if !p.acceptOne(lexer.TypeTerminator) {
-			return nil, fmt.Errorf("error parsing property definition block:\n> %w", err)
+			return nil, p.errExpectedNext().Tokens(lexer.TypeTerminator)
 		}
 	}
 }

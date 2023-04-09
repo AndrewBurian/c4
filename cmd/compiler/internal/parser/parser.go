@@ -1,16 +1,16 @@
 package parser
 
 import (
+	"bytes"
 	"fmt"
 	"path"
 	"strings"
 
 	"go.burian.dev/c4/cmd/compiler/internal/lexer"
-	"go.burian.dev/c4/cmd/compiler/internal/loader"
 )
 
 type Parser struct {
-	code []byte
+	code *bytes.Reader
 
 	currentToken  *lexer.Token
 	previousToken *lexer.Token
@@ -21,71 +21,117 @@ type Parser struct {
 	currentFile     string
 	currentUniqueId int
 
-	load  loader.Loader
-	lexer *lexer.Lexer
+	provider Provider
 
-	workspaces map[IdentifierString]*Workspace
+	tokenStreamStack   []*streamState
+	currentTokenStream lexer.TokenStream
 }
 
-func NewParser(l *loader.Loader) *Parser {
-	p := new(Parser)
-	p.load = l
-	p.currentUniqueId = 1
-
-	return p
+type streamState struct {
+	stream   lexer.TokenStream
+	previous *lexer.Token
 }
 
-func (p *Parser) Run() error {
+type Provider interface {
+	GetSourceFor(string) (*bytes.Reader, error)
+	GetTokenStreamFor(string) (lexer.TokenStream, error)
+}
 
-	for {
-		source, err := p.load.NextWorkspace()
-		if err != nil {
-			return err
-		}
-		if source == nil {
-			break
-		}
+func (p *Parser) Run(target string, deps Provider) (*Workspace, error) {
 
-		p.currentFile = source.File
-		p.code = source.Dsl
-		p.lexer = lexer.NewLexer(p.code)
+	p.provider = deps
 
-		err = p.lexer.Run()
-		if err != nil {
-			return err
-		}
-
-		newWorks, err := p.runParse()
-		if err != nil {
-			return err
-		}
-
-		for _, w := range newWorks {
-			if _, exists := p.workspaces[w.Id()]; exists {
-				return fmt.Errorf("duplicate workspace declaration for %s in file %s", w.Id(), p.currentFile)
-			}
-			p.workspaces[w.Id()] = w
-		}
+	tokens, err := deps.GetTokenStreamFor(target)
+	if err != nil {
+		return nil, err
 	}
+	p.currentTokenStream = tokens
 
-	return nil
-}
+	data, err := deps.GetSourceFor(target)
+	if err != nil {
+		return nil, err
+	}
+	p.code = data
+	p.currentFile = target
 
-func (p *Parser) reset() {
-	p.currentToken = nil
-	p.currentFile = ""
-	p.lexer = nil
-	p.currentScope = nil
 	p.currentToken = &lexer.Token{}
+
+	return p.runParse()
 }
 
 func (p *Parser) currentSymbol() string {
-	return string(p.currentToken.BytesAt(p.code))
+	symbolLen := p.currentToken.Positions().End.ByteOffset - p.currentToken.Positions().Start.ByteOffset
+	symbolBytes := make([]byte, symbolLen)
+
+	targetSourceFile := p.currentToken.Positions().Start.File
+	if p.currentFile != targetSourceFile {
+		newCode, err := p.provider.GetSourceFor(targetSourceFile)
+		if err != nil {
+			panic("unable to get source for token: " + err.Error())
+		}
+		p.currentFile = targetSourceFile
+		p.code = newCode
+	}
+	n, err := p.code.ReadAt(symbolBytes, int64(p.currentToken.Positions().Start.ByteOffset))
+	if err != nil || n != symbolLen {
+		panic("failed to read data bytes for code")
+	}
+	return string(symbolBytes)
 }
 
+// returns the next token in the stream
+//
+// There are two special cases
+// - the next token is a #pragma
+// - the next token is EOF
+//
+// If it's a pragma, the parser will handle the pragma then advance and return the next token.
+// If it's EOF, the parser will check there are streams on the stack. If there are, it will pop
+// one and continue that stream, otherwise return EOF
 func (p *Parser) nextToken() *lexer.Token {
 	p.previousToken = p.currentToken
-	p.currentToken = p.lexer.NextToken()
+	p.currentToken = p.currentTokenStream.NextToken()
+
+	// pragma directives are trapped by the parser
+	// and not returned to the model
+	if p.currentToken.Is(lexer.TypePragma) {
+		switch p.currentSymbol() {
+		case "#include":
+			oldPrev := p.previousToken
+			file, err := p.parseString()
+			if err != nil {
+				panic("failed to process #include pragma: need file argument")
+			}
+
+			// load the new inlcuded stream
+			newStream, err := p.provider.GetTokenStreamFor(file)
+			if err != nil {
+				panic("could not fetch named token stream to include: " + err.Error())
+			}
+
+			newNext := newStream.NextToken()
+
+			// push the current token source onto the stack
+			ss := &streamState{
+				stream:   p.currentTokenStream,
+				previous: oldPrev,
+			}
+			p.tokenStreamStack = append(p.tokenStreamStack, ss)
+
+			p.currentTokenStream = newStream
+			p.currentToken = newNext
+			return p.currentToken
+		}
+	}
+
+	for p.currentToken.Is(lexer.TypeEOF) && len(p.tokenStreamStack) > 0 {
+		popState := p.tokenStreamStack[len(p.tokenStreamStack)-1]
+		p.currentTokenStream = popState.stream
+		p.currentToken = p.currentTokenStream.NextToken()
+		p.previousToken = popState.previous
+		p.tokenStreamStack = p.tokenStreamStack[:len(p.tokenStreamStack)-1]
+	}
+
 	return p.currentToken
 }
 
@@ -95,7 +141,7 @@ func (p *Parser) backupToken() {
 	}
 	p.currentToken = p.previousToken
 	p.previousToken = nil
-	p.lexer.BackupToken()
+	p.currentTokenStream.BackupToken()
 }
 
 func (p *Parser) acceptOne(t lexer.TokenType) bool {
@@ -133,7 +179,7 @@ func (p *Parser) assignIdentifier(e Entity) {
 	switch obj := e.(type) {
 	case *Workspace:
 		typeName = "workspace"
-		fallback = obj.File
+		fallback = p.currentFile
 	case *SoftwareSystem:
 		typeName = "softwaresystem"
 		fallback = obj.Name
@@ -171,8 +217,4 @@ func (p *Parser) assignGroup(e Entity) {
 
 func (p *Parser) workspaceNameFromFile() IdentifierString {
 	return IdentifierString(path.Base(p.currentFile))
-}
-
-func (p *Parser) loadWorkspace(uri string) {
-	//p.loader.Load(uri)
 }

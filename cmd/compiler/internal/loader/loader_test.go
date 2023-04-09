@@ -24,7 +24,7 @@ func (m *mockFetcher) Has(_ *url.URL) bool {
 }
 
 type fetchReporter interface {
-	Cache
+	cache
 	WasExecuted() bool
 }
 
