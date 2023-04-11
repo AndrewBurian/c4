@@ -1,4 +1,4 @@
-package compiler
+package main
 
 import (
 	"bytes"
@@ -9,14 +9,13 @@ import (
 	"unicode/utf8"
 
 	"go.burian.dev/c4/cmd/compiler/internal/lexer"
-	"go.burian.dev/c4/cmd/compiler/internal/loader"
 )
 
 type CodeError interface {
 	TokenAtError() *lexer.Token
 }
 
-func prettyPrintError(e error, l loader.DSLSource) string {
+func (c *compiler) prettyPrintError(e error) string {
 
 	var ce CodeError
 	if !errors.As(e, &ce) {
@@ -25,8 +24,9 @@ func prettyPrintError(e error, l loader.DSLSource) string {
 
 	buf := new(strings.Builder)
 	buf.WriteString(e.Error())
+	buf.WriteRune('\n')
 
-	code, err := l.Source(ce.TokenAtError().Positions().Start.File)
+	code, err := c.GetSourceFor(ce.TokenAtError().Positions().Start.File)
 	if err != nil {
 		panic("printing error message for unavailable DSL file")
 	}
@@ -49,13 +49,9 @@ func writeCodeContext(buf *strings.Builder, source *bytes.Reader, tok *lexer.Tok
 		panic("error reading byte buffer from source reader")
 	}
 
-	// File declaration
-	buf.WriteByte('\n')
-	if pos.Start.File != "" {
-		fmt.Fprintf(buf, "In file %s\n", pos.Start.File)
-	}
+	fileName := pos.Start.File
 
-	const lineFormat = "Line % -4d> %s\n"
+	const lineFormat = "%s: %03d > %s\n"
 
 	startCode := 0
 	lineStarts := make([]int, 0, contextLines)
@@ -79,7 +75,7 @@ func writeCodeContext(buf *strings.Builder, source *bytes.Reader, tok *lexer.Tok
 		lineNo = len(lineStarts) - i - 1
 		if lineNo >= 0 && lineNo < pos.Start.Line-1 {
 			l := string(code[lineStarts[lineNo] : lineStarts[lineNo+1]-1])
-			fmt.Fprintf(buf, lineFormat, lineNo+1, strings.ReplaceAll(l, "\t", tabReplacement))
+			fmt.Fprintf(buf, lineFormat, fileName, lineNo+1, strings.ReplaceAll(l, "\t", tabReplacement))
 		}
 	}
 
@@ -102,12 +98,14 @@ func writeCodeContext(buf *strings.Builder, source *bytes.Reader, tok *lexer.Tok
 	codeLine := string(code[startCode:endCode])
 	codeLine = strings.ReplaceAll(codeLine, "\t", tabReplacement)
 	codeLine = strings.TrimRight(codeLine, "\n\t ")
-	fmt.Fprintf(buf, "Line % -4d> %s\n", pos.Start.Line, codeLine)
+	fmt.Fprintf(buf, lineFormat, fileName, pos.Start.Line, codeLine)
 
 	// problem token highlight
 
 	// pre-indicator fill
-	lineToFill := pos.Start.Column + 11
+	// print another line but without the newline
+	fmt.Fprintf(buf, lineFormat[0:len(lineFormat)-3], fileName, pos.Start.Line)
+	lineToFill := pos.Start.Column
 	if spaces := lineToFill - len(errorDecorator); spaces > 0 {
 		buf.WriteString(strings.Repeat(" ", spaces))
 		lineToFill -= spaces
@@ -141,7 +139,7 @@ func writeCodeContext(buf *strings.Builder, source *bytes.Reader, tok *lexer.Tok
 	lineNo = pos.End.Line + 1
 	for i := 0; i < len(lineStarts)-1; i++ {
 		l := string(code[lineStarts[i] : lineStarts[i+1]-1])
-		fmt.Fprintf(buf, lineFormat, lineNo+i, strings.ReplaceAll(l, "\t", tabReplacement))
+		fmt.Fprintf(buf, lineFormat, fileName, lineNo+i, strings.ReplaceAll(l, "\t", tabReplacement))
 	}
 
 	return

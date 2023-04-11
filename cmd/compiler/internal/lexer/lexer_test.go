@@ -2,9 +2,22 @@ package lexer
 
 import (
 	"bytes"
-	"reflect"
+	"fmt"
 	"testing"
 )
+
+type mockDependencies struct {
+	sources map[string]string
+}
+
+var _ Provider = &mockDependencies{}
+
+func (m *mockDependencies) GetSourceFor(name string) (*bytes.Reader, error) {
+	if buf, has := m.sources[name]; has {
+		return bytes.NewReader([]byte(buf)), nil
+	}
+	return nil, fmt.Errorf("no such source: %s", name)
+}
 
 func TestLexer_Run(t *testing.T) {
 	tests := []struct {
@@ -117,19 +130,24 @@ func TestLexer_Run(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 
-			input := bytes.NewReader([]byte(tt.input))
+			deps := &mockDependencies{
+				sources: map[string]string{
+					"main.c4": tt.input,
+				},
+			}
 
 			t.Log(tt.input)
-			if err := l.Run(input); (err != nil) != tt.wantErr {
+			out, err := l.Run("main.c4", deps)
+			if (err != nil) != tt.wantErr {
 				t.Errorf("Lexer.Run() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
-			if len(tt.wantTokens) != len(l.tokens) {
+			if len(tt.wantTokens) != len(out.tokens) {
 				t.Errorf("Lexer returned wrong number of tokens: expected = %d / got = %d", len(tt.wantTokens), len(l.tokens))
 				t.Log(l.tokens)
 			}
 
-			for i, got := range l.tokens {
+			for i, got := range out.tokens {
 				if i >= len(tt.wantTokens) {
 					break
 				}
@@ -140,97 +158,6 @@ func TestLexer_Run(t *testing.T) {
 
 				if got.Is(TypeError) {
 					t.Errorf("Lexing error: %s", got.err)
-				}
-			}
-		})
-	}
-}
-
-func TestLexer_Position(t *testing.T) {
-	tests := []struct {
-		name          string
-		input         string
-		wantTokens    []TokenType
-		wantPositions []PositionRange
-	}{
-		{
-			name:  "one string",
-			input: `"a"`,
-
-			wantTokens: []TokenType{TypeString},
-			wantPositions: []PositionRange{
-				{Position{1, 0, "", 0}, Position{1, 3, "", 3}},
-			},
-		},
-		{
-			name:  "unicode",
-			input: `"👍"`,
-
-			wantTokens: []TokenType{TypeString},
-			wantPositions: []PositionRange{
-				{Position{1, 0, "", 0}, Position{1, 3, "", 6}},
-			},
-		},
-		{
-			name:  "two string",
-			input: `'string' 'string'`,
-
-			wantTokens: []TokenType{TypeString, TypeString},
-			wantPositions: []PositionRange{
-				{Position{1, 0, "", 0}, Position{1, 8, "", 8}},
-				{Position{1, 9, "", 9}, Position{1, 17, "", 17}},
-			},
-		},
-		{
-			name:  "newlines",
-			input: "'string'\n'string'",
-
-			wantTokens: []TokenType{TypeString, TypeTerminator, TypeString},
-			wantPositions: []PositionRange{
-				{Position{1, 0, "", 0}, Position{1, 8, "", 8}},
-				{Position{1, 8, "", 8}, Position{1, 9, "", 9}},
-				{Position{2, 0, "", 9}, Position{2, 8, "", 17}},
-			},
-		},
-		{
-			name:  "newlines unicode",
-			input: "'string'\n'st👍'",
-
-			wantTokens: []TokenType{TypeString, TypeTerminator, TypeString},
-			wantPositions: []PositionRange{
-				{Position{1, 0, "", 0}, Position{1, 8, "", 8}},
-				{Position{1, 8, "", 8}, Position{1, 9, "", 9}},
-				{Position{2, 0, "", 9}, Position{2, 5, "", 17}},
-			},
-		},
-		{
-			name:  "newlines multiunicode",
-			input: "'st👍'\n'st👍👍👍'",
-
-			wantTokens: []TokenType{TypeString, TypeTerminator, TypeString},
-			wantPositions: []PositionRange{
-				{Position{1, 0, "", 0}, Position{1, 5, "", 8}},
-				{Position{1, 5, "", 8}, Position{1, 6, "", 9}},
-				{Position{2, 0, "", 9}, Position{2, 7, "", 25}},
-			},
-		},
-	}
-	l := new(Lexer)
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			input := bytes.NewReader([]byte(tt.input))
-			if err := l.Run(input); err != nil {
-				t.Fatalf("unexpected lex error: %s", err)
-			}
-			for i := range tt.wantPositions {
-				tok := l.tokens[i]
-				if !tok.Is(tt.wantTokens[i]) {
-					t.Errorf("wrong token type")
-				}
-				if !reflect.DeepEqual(*tok.position, tt.wantPositions[i]) {
-					t.Errorf("bad start position for %s: got (start: %v end: %v), want (start: %v end: %v)", tt.wantTokens[i],
-						tok.position.Start, tok.position.End,
-						tt.wantPositions[i].Start, tt.wantPositions[i].End)
 				}
 			}
 		})

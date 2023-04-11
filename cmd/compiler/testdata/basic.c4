@@ -1,0 +1,2 @@
+// simple workspace with just a name
+workspace 'foo';

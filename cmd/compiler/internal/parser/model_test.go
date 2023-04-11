@@ -293,7 +293,7 @@ func TestParser_runParse(t *testing.T) {
 			// 	t.Fatalf("lexer error on test input: %s", err)
 			// }
 
-			mts := &mockDependencies{lexers: make(map[string]*lexer.Lexer), sources: map[string]string{"test": tt.input}}
+			mts := &mockDependencies{l: new(lexer.Lexer), sources: map[string]string{"test": tt.input}}
 			got, err := p.Run("test", mts)
 
 			if (err != nil) != tt.wantErr {
@@ -372,7 +372,7 @@ func TestParseInclude(t *testing.T) {
 	p := new(Parser)
 	_ = 1
 
-	mts := &mockDependencies{lexers: make(map[string]*lexer.Lexer), sources: sources}
+	mts := &mockDependencies{l: new(lexer.Lexer), sources: sources}
 	got, err := p.Run("base.c4", mts)
 
 	if err != nil {

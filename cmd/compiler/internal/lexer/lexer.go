@@ -27,7 +27,6 @@ type Lexer struct {
 
 	tokens        []*Token
 	previousToken *Token
-	tokenCursor   int
 }
 
 type Provider interface {
@@ -35,11 +34,11 @@ type Provider interface {
 }
 
 // Run clears the state of the lexer and starts it again with a new input
-func (l *Lexer) Run(target string, deps Provider) error {
+func (l *Lexer) Run(target string, deps Provider) (*LexedSource, error) {
 
 	input, err := deps.GetSourceFor(target)
 	if err != nil {
-		return fmt.Errorf("unable to get source for lexing: %w", err)
+		return nil, fmt.Errorf("unable to get source for lexing: %w", err)
 	}
 
 	l.inputBuffer = input
@@ -60,16 +59,13 @@ func (l *Lexer) Run(target string, deps Provider) error {
 	l.state = rootState
 	l.err = nil
 
-	l.tokenCursor = -1
-	if l.tokens != nil {
-		l.tokens = l.tokens[0:0]
-	}
+	l.tokens = make([]*Token, 0, 5)
 
 	for l.state != nil {
 		l.state = l.state(l)
 	}
 
-	return l.err
+	return &LexedSource{tokens: l.tokens}, l.err
 }
 
 func (l *Lexer) next() rune {

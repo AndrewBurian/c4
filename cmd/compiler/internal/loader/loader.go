@@ -8,7 +8,7 @@ import (
 )
 
 type Loader interface {
-	Load(context.Context, string) (*bytes.Reader, error)
+	Load(context.Context, string) ([]byte, error)
 }
 
 type fetcher interface {
@@ -26,16 +26,14 @@ type sourceLoader struct {
 	cache   cache
 	fetcher fetcher
 
-	config *sourceLoadConfig
-
-	lineMods []lineModifiers
+	config *SourceLoadConfig
 }
 
-type sourceLoadConfig struct {
+type SourceLoadConfig struct {
 	CanFetchRemote bool
 }
 
-func (l *sourceLoader) Load(ctx context.Context, uri string) (*bytes.Reader, error) {
+func (l *sourceLoader) Load(ctx context.Context, uri string) ([]byte, error) {
 
 	netUrl, err := l.validateUri(uri)
 	if err != nil {
@@ -45,7 +43,7 @@ func (l *sourceLoader) Load(ctx context.Context, uri string) (*bytes.Reader, err
 	var buf *bytes.Buffer
 	if l.cache != nil && l.cache.Has(netUrl) {
 		buf, _ = l.cache.Fetch(ctx, netUrl)
-		return bytes.NewReader(buf.Bytes()), nil
+		return buf.Bytes(), nil
 	}
 
 	var f fetcher
@@ -60,12 +58,7 @@ func (l *sourceLoader) Load(ctx context.Context, uri string) (*bytes.Reader, err
 		return nil, err
 	}
 
-	buf, err = l.process(ctx, buf)
-	if err != nil {
-		return nil, err
-	}
-
-	return bytes.NewReader(buf.Bytes()), nil
+	return buf.Bytes(), nil
 }
 
 func (l *sourceLoader) validateUri(uri string) (*url.URL, error) {

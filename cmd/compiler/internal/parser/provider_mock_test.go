@@ -8,25 +8,27 @@ import (
 )
 
 type mockDependencies struct {
-	sources map[string]string
-	lexers  map[string]*lexer.Lexer
-	l       *lexer.Lexer
+	sources      map[string]string
+	lexedSources map[string]*lexer.LexedSource
+	l            *lexer.Lexer
 }
 
 var _ Provider = &mockDependencies{}
 
 func (m *mockDependencies) GetTokenStreamFor(name string) (lexer.TokenStream, error) {
-	if l, has := m.lexers[name]; has {
-		return l.TokenStream(), nil
+	if m.lexedSources == nil {
+		m.lexedSources = make(map[string]*lexer.LexedSource)
 	}
-	if _, has := m.sources[name]; !has {
-		return nil, fmt.Errorf("no data file")
+	if ls, has := m.lexedSources[name]; has {
+		return ls.TokenStream(), nil
 	}
-	newL := new(lexer.Lexer)
-	if err := newL.Run(name, m); err != nil {
+
+	newL, err := m.l.Run(name, m)
+	if err != nil {
 		return nil, err
 	}
-	m.lexers[name] = newL
+
+	m.lexedSources[name] = newL
 	return newL.TokenStream(), nil
 }
 

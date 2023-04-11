@@ -1,0 +1,12 @@
+Output-Match: expect_out.json
+Target: main.c4
+Compare-With: json
+Json-Indent: true
+
+-- main.c4 --
+workspace 'main' {}
+
+-- expect_out.json --
+{
+    "name": "main"
+}

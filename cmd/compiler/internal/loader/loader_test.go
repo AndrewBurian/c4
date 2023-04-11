@@ -3,7 +3,6 @@ package loader
 import (
 	"bytes"
 	"context"
-	"io"
 	"net/url"
 	"testing"
 )
@@ -63,9 +62,8 @@ func Test_loader_Load(t *testing.T) {
 				return
 			}
 
-			gotBytes, _ := io.ReadAll(got)
-			if bytes.Compare(gotBytes, []byte(tt.want)) != 0 {
-				t.Errorf("Mismatched response\nwant %q\n got  %q", tt.want, gotBytes)
+			if !bytes.Equal(got, []byte(tt.want)) {
+				t.Errorf("Mismatched response\nwant %q\n got  %q", tt.want, got)
 			}
 		})
 	}

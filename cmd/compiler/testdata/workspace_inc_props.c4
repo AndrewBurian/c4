@@ -1,0 +1,10 @@
+
+main.c4
+workspace "include common properties" {
+    model {
+        a = softwaresystem 'sys a' {
+            #include 'include_common_props.c4'
+        }
+    }
+}
+

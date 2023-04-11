@@ -6,9 +6,9 @@ type Position struct {
 	Line   int
 	Column int
 
-	File string
-
 	ByteOffset int
+
+	File string
 }
 
 type PositionRange struct {
@@ -30,7 +30,7 @@ func (p *PositionRange) Clone() *PositionRange {
 }
 
 func (pr *PositionRange) String() string {
-	return fmt.Sprintf("File: '%s', line %d col %d (%d bytes)",
+	return fmt.Sprintf("%s (line %d col %d + next %d bytes)",
 		pr.Start.File,
 		pr.Start.Line, pr.Start.Column,
 		pr.End.ByteOffset-pr.Start.ByteOffset,

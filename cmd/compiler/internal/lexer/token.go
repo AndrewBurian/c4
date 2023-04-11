@@ -34,9 +34,9 @@ func (t *Token) Positions() *PositionRange {
 
 func (t *Token) String() string {
 	if t.err != nil {
-		return fmt.Sprintf("Error(%s) at (%s)", t.err, t.position)
+		return fmt.Sprintf("Error(%s) at %s", t.err, t.position)
 	}
-	return fmt.Sprintf("%s at (%s)", t.Type(), t.position)
+	return fmt.Sprintf("%s at %s", t.Type(), t.position)
 }
 
 type TokenType int

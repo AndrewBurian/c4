@@ -77,6 +77,30 @@ func (ch *childEntities) Add(e Entity) error {
 	return nil
 }
 
+func assignableKeywords(keys []Keyword) (onlyAssignable []Keyword) {
+	onlyAssignable = make([]Keyword, 0, len(keys))
+	allAssignable := []Keyword{
+		KeywordPerson,
+		KeywordSoftwareSystem,
+		KeywordContainer,
+		KeywordComponent,
+		KeywordGroup,
+	}
+	for _, candidate := range keys {
+		isAssignable := false
+		for _, acceptable := range allAssignable {
+			if candidate == acceptable {
+				isAssignable = true
+				break
+			}
+		}
+		if isAssignable {
+			onlyAssignable = append(onlyAssignable, candidate)
+		}
+	}
+	return onlyAssignable
+}
+
 func (p *Parser) parseShortDeclarationSeq(must int, targets ...any) error {
 
 	finished := 0
@@ -149,16 +173,24 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 		return false
 	}
 
+	// if true, a p.heldIds was set in this context, and the next item should be an assignable keyword
 	holdingName := false
 
 	for {
 		// accept an identifier string, assuming what follows next will either be
 		// a relationship of a keyword
 		if p.acceptIdentifierString() {
+			if holdingName {
+				return p.errExpectedNext().Tokens(lexer.TypeRelationship).Keywords(assignableKeywords(allowed)...)
+			}
+
 			if err := p.parseEntityNameOrRelationship(e); err != nil {
 				return fmt.Errorf("error parsing entity:\n> %w", err)
 			}
-			holdingName = true
+
+			if p.currentToken.Is(lexer.TypeAssignment){
+				holdingName = true
+			}
 			continue
 		}
 
@@ -168,11 +200,7 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 				return fmt.Errorf("error parsing entity:\n> %w", err)
 			}
 			e.SetRelationship(rel)
-			continue
-		}
-
-		// empty declarations aren't an error, just odd
-		if p.acceptOne(lexer.TypeTerminator) {
+			holdingName = false
 			continue
 		}
 
@@ -185,7 +213,7 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 
 			case KeywordDescription:
 				if holdingName {
-					return fmt.Errorf("illegal description assignment to identifier")
+					return p.errExpectedNext().Tokens(lexer.TypeRelationship).Keywords(assignableKeywords(allowed)...)
 				}
 				if e.Description != "" {
 					return fmt.Errorf("illegal redeclaration of description in body")
@@ -202,6 +230,9 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 				continue
 
 			case KeywordTags:
+				if holdingName {
+					return p.errExpectedNext().Tokens(lexer.TypeRelationship).Keywords(assignableKeywords(allowed)...)
+				}
 				if len(e.Tags) > 0 {
 					return fmt.Errorf("illegal redeclaratipn of tags in body")
 				}
@@ -216,6 +247,9 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 				continue
 
 			case KeywordProperties:
+				if holdingName {
+					return p.errExpectedNext().Tokens(lexer.TypeRelationship).Keywords(assignableKeywords(allowed)...)
+				}
 				if len(e.Properties) > 0 {
 					return fmt.Errorf("illegal dupluicate declaration of properties")
 				}
@@ -227,6 +261,9 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 				continue
 
 			case KeywordPerspectives:
+				if holdingName {
+					return p.errExpectedNext().Tokens(lexer.TypeRelationship).Keywords(assignableKeywords(allowed)...)
+				}
 				if len(e.Perspectives) > 0 {
 					return fmt.Errorf("illegal dupluicate declaration of perspectives")
 				}
@@ -238,6 +275,9 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 				continue
 
 			case KeywordThis:
+				if holdingName {
+					return p.errExpectedNext().Tokens(lexer.TypeRelationship).Keywords(assignableKeywords(allowed)...)
+				}
 				r, err := p.parseRelationship("this")
 				if err != nil {
 					return fmt.Errorf("error parsing entity:\n> %w", err)
@@ -251,6 +291,7 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 					return fmt.Errorf("error parsing entity:\n> %w", err)
 				}
 				p.assignIdentifier(pers)
+				holdingName = false
 				p.assignGroup(pers)
 				e.Add(pers)
 				continue
@@ -261,6 +302,7 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 					return fmt.Errorf("error parsing entity:\n> %w", err)
 				}
 				p.assignIdentifier(ss)
+				holdingName = false
 				p.assignGroup(ss)
 				e.Add(ss)
 				continue
@@ -271,6 +313,7 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 					return fmt.Errorf("error parsing entity:\n> %w", err)
 				}
 				p.assignIdentifier(cont)
+				holdingName = false
 				p.assignGroup(cont)
 				e.Add(cont)
 				continue
@@ -281,11 +324,15 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 					return fmt.Errorf("error parsing entity:\n> %w", err)
 				}
 				p.assignIdentifier(comp)
+				holdingName = false
 				p.assignGroup(comp)
 				e.Add(comp)
 				continue
 
 			case KeywordTechnology:
+				if holdingName {
+					return p.errExpectedNext().Tokens(lexer.TypeRelationship).Keywords(assignableKeywords(allowed)...)
+				}
 				err := p.parseSimpleValue("technology", &e.Technology)
 				if err != nil {
 					return err
@@ -293,6 +340,9 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 				continue
 
 			case KeywordUrl:
+				if holdingName {
+					return p.errExpectedNext().Tokens(lexer.TypeRelationship).Keywords(assignableKeywords(allowed)...)
+				}
 				err := p.parseSimpleValue("url", &e.Url)
 				if err != nil {
 					return err
@@ -300,6 +350,9 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 				continue
 
 			case KeywordName:
+				if holdingName {
+					return p.errExpectedNext().Tokens(lexer.TypeRelationship).Keywords(assignableKeywords(allowed)...)
+				}
 				err := p.parseSimpleValue("name", &e.Name)
 				if err != nil {
 					return err
@@ -307,6 +360,10 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 				continue
 
 			default:
+				if holdingName {
+					return p.errExpectedNext().Tokens(lexer.TypeRelationship).Keywords(assignableKeywords(allowed)...)
+				}
+
 				// default is an interesting case here
 				// it's a keyword that's allowed, but we don't
 				// know how to handle
@@ -318,6 +375,16 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 				return nil
 			}
 
+		}
+
+		// all valid uses of an assigned name happen before here
+		if holdingName {
+			return p.errExpectedNext().Tokens(lexer.TypeRelationship).Keywords(assignableKeywords(allowed)...)
+		}
+
+		// empty declarations aren't an error, just odd
+		if p.acceptOne(lexer.TypeTerminator) {
+			continue
 		}
 
 		// not a token we know how to deal with

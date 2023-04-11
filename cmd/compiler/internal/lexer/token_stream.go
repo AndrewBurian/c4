@@ -5,18 +5,22 @@ type TokenStream interface {
 	BackupToken()
 }
 
-type stream struct {
-	tokens        []*Token
-	tokenCursor   int
-	lastReadToken *Token
+type LexedSource struct {
+	tokens []*Token
 }
 
-func (l *Lexer) TokenStream() TokenStream {
+func (l *LexedSource) TokenStream() TokenStream {
 	return &stream{
 		tokens:        l.tokens,
 		tokenCursor:   -1,
 		lastReadToken: nil,
 	}
+}
+
+type stream struct {
+	tokens        []*Token
+	tokenCursor   int
+	lastReadToken *Token
 }
 
 func (l *stream) NextToken() *Token {
