@@ -36,8 +36,6 @@ type compileConfig struct {
 
 	quiet      bool
 	jsonPretty bool
-
-	loader.SourceLoadConfig
 }
 
 var (

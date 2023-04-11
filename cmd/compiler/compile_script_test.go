@@ -131,14 +131,14 @@ func runScriptDir(t *testing.T, dirName string) {
 	for _, entry := range testFiles {
 		fullPath := filepath.Join(dirName, entry.Name())
 		if entry.Type().IsDir() {
-			t.Run(fullPath, func(t *testing.T) {
+			t.Run(filepath.Base(fullPath), func(t *testing.T) {
 				runScriptDir(t, fullPath)
 			})
 			continue
 		}
 
 		if entry.Type().IsRegular() {
-			t.Run(fullPath, func(t *testing.T) {
+			t.Run(filepath.Base(fullPath), func(t *testing.T) {
 				runScript(t, fullPath)
 			})
 			continue
@@ -165,8 +165,6 @@ func runScript(t *testing.T, file string) {
 		t.Fatalf("invalid test configuration: %s", err)
 	}
 	tt.archive = archive
-
-	
 
 	c := new(compiler)
 	c.loader = &archiveLoader{archive}

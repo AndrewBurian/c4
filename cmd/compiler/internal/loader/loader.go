@@ -131,7 +131,7 @@ func (l *sourceLoader) checkRedirect(req *http.Request, _ []*http.Request) error
 		}
 	}
 	if !allow {
-		return fmt.Errorf("unable to follow redurect to %s: loading source from %s blocked", req.URL.Redacted(), req.Host)
+		return fmt.Errorf("unable to follow redirect to %s: loading source from %s blocked", req.URL.Redacted(), req.URL.Host)
 	}
 	return nil
 }
@@ -141,6 +141,12 @@ type loaderOption func(*sourceLoadConfig)
 func RootedAt(path string) loaderOption {
 	return func(conf *sourceLoadConfig) {
 		conf.ChrootTo = path
+	}
+}
+
+func AllowRemote() loaderOption {
+	return func(conf *sourceLoadConfig) {
+		conf.BlockRemote = false
 	}
 }
 

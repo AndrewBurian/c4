@@ -19,8 +19,50 @@ func Test_loader_Load(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "invalid local file",
+			uri:     "nonexistant.llama",
+			wantErr: true,
+		},
+		{
+			name:    "chrooted local load",
+			uri:     "main.c4",
+			setup:   []loaderOption{RootedAt("testdata")},
+			wantErr: false,
+		},
+		{
+			name:    "chrooted local load blocks outside",
+			uri:     "/etc/passwd",
+			setup:   []loaderOption{RootedAt("testdata")},
+			wantErr: true,
+		},
+		{
 			name:    "block remote load",
 			uri:     "https://example.com/resources/foo.c4",
+			wantErr: true,
+		},
+		{
+			name:    "allow remote load",
+			setup:   []loaderOption{AllowRemote()},
+			uri:     "https://github.com/AndrewBurian/c4/blob/main/cmd/compiler/internal/loader/testdata/main.c4",
+			wantErr: false,
+		},
+		{
+			name:    "allow remote but allow list block",
+			setup:   []loaderOption{AllowRemote(), AllowedRemoteHosts("example.com")},
+			uri:     "https://github.com/AndrewBurian/c4/blob/main/cmd/compiler/internal/loader/testdata/main.c4",
+			wantErr: true,
+		},
+		{
+			name:    "allow remote and allow listed",
+			setup:   []loaderOption{AllowRemote(), AllowedRemoteHosts("github.com")},
+			uri:     "https://github.com/AndrewBurian/c4/blob/main/cmd/compiler/internal/loader/testdata/main.c4",
+			wantErr: false,
+		},
+		{
+			name:  "block redirect",
+			setup: []loaderOption{AllowRemote(), AllowedRemoteHosts("github.com")},
+			// /raw/ will redirect to raw.githubusercontent
+			uri:     "https://github.com/AndrewBurian/c4/raw/main/cmd/compiler/internal/loader/testdata/main.c4",
 			wantErr: true,
 		},
 	}
