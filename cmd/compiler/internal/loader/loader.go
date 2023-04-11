@@ -1,97 +1,173 @@
 package loader
 
 import (
-	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"io/fs"
+	"net/http"
 	"net/url"
+	"os"
+	"strings"
 )
 
 type Loader interface {
 	Load(context.Context, string) ([]byte, error)
 }
 
-type fetcher interface {
-	Fetch(context.Context, *url.URL) (*bytes.Buffer, error)
-}
-
-type cache interface {
-	fetcher
-
-	Store(*url.URL, *bytes.Buffer) error
-	Has(*url.URL) bool
-}
-
 type sourceLoader struct {
-	cache   cache
-	fetcher fetcher
-
-	config *SourceLoadConfig
+	config *sourceLoadConfig
 }
 
-type SourceLoadConfig struct {
-	CanFetchRemote bool
+type sourceLoadConfig struct {
+	AllowedHosts       []string
+	AllowInsecure      bool
+	BlockRemote        bool
+	ChrootTo           string
+	AuthorizationToken string
+}
+
+var defaultConfig = &sourceLoadConfig{
+	BlockRemote: true,
 }
 
 func (l *sourceLoader) Load(ctx context.Context, uri string) ([]byte, error) {
 
-	netUrl, err := l.validateUri(uri)
-	if err != nil {
-		return nil, err
+	if strings.ContainsRune(uri, ':') {
+		return l.loadExternal(ctx, uri)
 	}
-
-	var buf *bytes.Buffer
-	if l.cache != nil && l.cache.Has(netUrl) {
-		buf, _ = l.cache.Fetch(ctx, netUrl)
-		return buf.Bytes(), nil
-	}
-
-	var f fetcher
-	if l.fetcher != nil {
-		f = l.fetcher
-	} else {
-		f = defaultClient
-	}
-
-	buf, err = f.Fetch(ctx, netUrl)
-	if err != nil {
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
+	return l.loadFile(uri)
 }
 
-func (l *sourceLoader) validateUri(uri string) (*url.URL, error) {
+func (l *sourceLoader) loadFile(filename string) ([]byte, error) {
+	var fs fs.FS
+	if l.config.ChrootTo != "" {
+		fs = os.DirFS(l.config.ChrootTo)
+	} else {
+		fs = os.DirFS(".")
+	}
+
+	file, err := fs.Open(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file %s: %w", filename, err)
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return nil, fmt.Errorf("error reading file %s: %w", filename, err)
+	}
+
+	return data, err
+}
+
+func (l *sourceLoader) loadExternal(ctx context.Context, uri string) ([]byte, error) {
+
 	netUrl, err := url.Parse(uri)
 	if err != nil {
-		return nil, fmt.Errorf("invalid remote file specified %s: %s", uri, err)
+		return nil, fmt.Errorf("invalid URL %s: %w", uri, err)
 	}
 
-	if netUrl.Scheme != "https" && netUrl.Scheme != "file" && netUrl.Scheme != "" {
-		return nil, fmt.Errorf("unable to fetch remote file: scheme must be 'https:' or 'file:' got %s", netUrl.Scheme)
+	if l.config.BlockRemote {
+		return nil, fmt.Errorf("unable to load %s: loading external sources blocked", uri)
 	}
 
-	if netUrl.Scheme == "https" && !l.config.CanFetchRemote {
-		return nil, fmt.Errorf("error fetching remote file: remote fetch is disabled")
+	client := new(http.Client)
+
+	if len(l.config.AllowedHosts) > 0 {
+		allow := false
+		for _, host := range l.config.AllowedHosts {
+			if strings.EqualFold(netUrl.Hostname(), host) {
+				allow = true
+				break
+			}
+		}
+		if !allow {
+			return nil, fmt.Errorf("unable to load %s: loading source from %s blocked", uri, netUrl.Hostname())
+		}
+		client.CheckRedirect = l.checkRedirect
+	}
+
+	if netUrl.Scheme == "http" && !l.config.AllowInsecure {
+		return nil, fmt.Errorf("unable to load %s: loading over plaintext http blocked", uri)
 	}
 
 	netUrl.Fragment = ""
 
-	return netUrl, nil
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, netUrl.String(), http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("error creating external request: %s", err)
+	}
+
+	if l.config.AuthorizationToken != "" {
+		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", l.config.AuthorizationToken))
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching source: %s", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("error fetching %s: server returned %s", resp.Request.URL.Redacted(), resp.Status)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("connection inturrupted while fetching response: %w", err)
+	}
+
+	return data, nil
+
 }
 
-type loaderOptions func(*sourceLoader)
+func (l *sourceLoader) checkRedirect(req *http.Request, _ []*http.Request) error {
+	allow := false
+	for _, host := range l.config.AllowedHosts {
+		if strings.EqualFold(req.Host, host) {
+			allow = true
+			break
+		}
+	}
+	if !allow {
+		return fmt.Errorf("unable to follow redurect to %s: loading source from %s blocked", req.URL.Redacted(), req.Host)
+	}
+	return nil
+}
 
-func WithMemoryCache() loaderOptions {
-	return func(l *sourceLoader) {
-		l.cache = new(memoryCache)
+type loaderOption func(*sourceLoadConfig)
+
+func RootedAt(path string) loaderOption {
+	return func(conf *sourceLoadConfig) {
+		conf.ChrootTo = path
 	}
 }
 
-func NewLoader(opts ...loaderOptions) Loader {
+func AllowedRemoteHosts(hosts ...string) loaderOption {
+	return func(conf *sourceLoadConfig) {
+		conf.AllowedHosts = hosts
+	}
+}
+
+func AllowInsecure() loaderOption {
+	return func(conf *sourceLoadConfig) {
+		conf.AllowInsecure = true
+	}
+}
+
+func SetAuthorizationToken(token string) loaderOption {
+	return func(conf *sourceLoadConfig) {
+		conf.AuthorizationToken = token
+	}
+}
+
+func NewLoader(opts ...loaderOption) Loader {
 	l := new(sourceLoader)
+	conf := *defaultConfig
+	l.config = &conf
 	for i := range opts {
-		opts[i](l)
+		opts[i](l.config)
 	}
 	return l
 }
