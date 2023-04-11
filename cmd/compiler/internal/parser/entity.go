@@ -188,7 +188,7 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 				return fmt.Errorf("error parsing entity:\n> %w", err)
 			}
 
-			if p.currentToken.Is(lexer.TypeAssignment){
+			if p.currentToken.Is(lexer.TypeAssignment) {
 				holdingName = true
 			}
 			continue
@@ -277,6 +277,9 @@ func (p *Parser) parseEntityBase(e *baseEntity, allowed ...Keyword) error {
 			case KeywordThis:
 				if holdingName {
 					return p.errExpectedNext().Tokens(lexer.TypeRelationship).Keywords(assignableKeywords(allowed)...)
+				}
+				if !p.acceptOne(lexer.TypeRelationship) {
+					p.errExpectedNext().Tokens(lexer.TypeRelationship)
 				}
 				r, err := p.parseRelationship("this")
 				if err != nil {

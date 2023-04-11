@@ -178,6 +178,7 @@ func (p *Parser) parseModel() (*Model, error) {
 		err = p.parseEntityBase(&m.baseEntity,
 			KeywordPerson,
 			KeywordSoftwareSystem,
+			KeywordThis,
 			KeywordGroup, // not handled by entity base
 		)
 		if err != nil {
@@ -238,6 +239,7 @@ func (p *Parser) parsePerson() (*Person, error) {
 		KeywordUrl,
 		KeywordProperties,
 		KeywordPerspectives,
+		KeywordThis,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing person block declaration:\n> %w", err)
@@ -283,6 +285,7 @@ func (p *Parser) parseSoftwareSys() (*SoftwareSystem, error) {
 			KeywordUrl,
 			KeywordProperties,
 			KeywordPerspectives,
+			KeywordThis,
 			KeywordGroup, // unhandled by pase parser
 		)
 		if err != nil {
@@ -444,6 +447,7 @@ func (p *Parser) parseContainer() (*Container, error) {
 		KeywordUrl,
 		KeywordProperties,
 		KeywordPerspectives,
+		KeywordThis,
 	}
 
 	if err := p.parseEntityBase(&c.baseEntity, allowedContainerProps...); err != nil {
@@ -486,6 +490,7 @@ func (p *Parser) parseComponent() (*Component, error) {
 		KeywordUrl,
 		KeywordProperties,
 		KeywordPerspectives,
+		KeywordThis,
 	}
 
 	if err := p.parseEntityBase(&c.baseEntity, allowedComponentProps...); err != nil {
@@ -501,11 +506,23 @@ func (p *Parser) parseComponent() (*Component, error) {
 
 func (p *Parser) parseRelationship(from IdentifierString) (*Relationship, error) {
 	r := new(Relationship)
-	if !p.acceptIdentifierString() {
+	r.SourceId = from
+
+	// relationships either target an identifier or "this"
+	if p.acceptIdentifierString() {
+		r.DestinationId = p.claimHeldIdentifier()
+	} else if p.acceptOne(lexer.TypeKeyword) {
+		if p.currentKeyword() != KeywordThis {
+			return nil, p.errExpectedNext().Tokens(lexer.TypeIdentifier).Keywords(KeywordThis)
+		}
+		r.DestinationId = "this"
+	} else {
 		return nil, p.errExpectedNext().Tokens(lexer.TypeIdentifier)
 	}
-	r.SourceId = from
-	r.DestinationId = p.claimHeldIdentifier()
+
+	if r.SourceId == "this" && r.DestinationId == "this" {
+		return nil, ErrorForToken(p.currentToken, fmt.Errorf("double use of 'this' creates meaningless relationship"))
+	}
 
 	err := p.parseShortDeclarationSeq(0,
 		&r.Description,
@@ -530,6 +547,7 @@ func (p *Parser) parseRelationship(from IdentifierString) (*Relationship, error)
 		KeywordProperties,
 		KeywordPerspectives,
 		KeywordTechnology,
+		KeywordThis,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing relationship body:\n> %w", err)

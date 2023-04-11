@@ -162,7 +162,7 @@ func (p *Parser) claimHeldIdentifier() IdentifierString {
 		panic("attempt to claim null identifier")
 	}
 	id := p.heldIds[len(p.heldIds)-1]
-	p.heldIds = p.heldIds[:len(p.heldIds)]
+	p.heldIds = p.heldIds[:len(p.heldIds)-1]
 	return id
 }
 

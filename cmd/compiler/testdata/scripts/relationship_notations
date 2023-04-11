@@ -1,16 +1,12 @@
 Output-Match: expect_out.json
 Target: main.c4
 Compare-With: json
-Json-Indent: true
+Json-Pretty: true
 
 -- main.c4 --
 workspace 'main' "This is a workspace" {
     model {
-        a = softwareSystem 'sys a' "Description" {
-            tags "foo" "bar"
-            properties {
-                "prop-a" "val-a"
-            }
+        a = softwareSystem 'sys a' {
             -> b "rel-ab"
             this -> c "rel-ac"
             a -> d "rel-ad"
@@ -20,33 +16,31 @@ workspace 'main' "This is a workspace" {
 
 -- expect_out.json --
 {
-    "name": "main"
-    "description": "This is a workspace"
-    "named_entities": {
-        "a":{
-            "name": "sys a",
-            "local_id": "a",
-            "tags": ["foo", "bar"],
-            "properties": {
-                "prop-a": "prop-b"
-            },
-            "relationships": [
-                {
-                    "source_id": "a",
-                    "destination_id": "b",
-                    "description": "rel-ab"
-                },
-                {
-                    "source_id": "a",
-                    "destination_id": "c",
-                    "description": "rel-ac"
-                },
-                {
-                    "source_id": "a",
-                    "destination_id": "d",
-                    "description": "rel-ad"
-                }
-            ]
+    "name": "main",
+    "description": "This is a workspace",
+    "model": {
+        "named_entities": {
+            "a": {
+                "name": "sys a",
+                "local_id": "_anon",
+                "relationships": [
+                    {
+                        "source_id": "this",
+                        "destination_id": "b",
+                        "description": "rel-ab"
+                    },
+                    {
+                        "source_id": "this",
+                        "destination_id": "c",
+                        "description": "rel-ac"
+                    },
+                    {
+                        "source_id": "a",
+                        "destination_id": "d",
+                        "description": "rel-ad"
+                    }
+                ]
+            }
         }
     }
 }
